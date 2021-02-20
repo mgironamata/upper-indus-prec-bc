@@ -59,7 +59,7 @@ def print_summary_of_results(st_test, likelihood_fn, alldays=True, drydays=True,
                    100 - st_test_r['se_bcp'][nonzero_mask].mean()/st_test_r['se_wrf'][nonzero_mask].mean()*100,
                    100 - st_test_r['se_mlp'][nonzero_mask].mean()/st_test_r['se_wrf'][nonzero_mask].mean()*100,
                    100 - st_test_r['se_mlp_median'][nonzero_mask].mean()/st_test_r['se_wrf'][nonzero_mask].mean()*100,  
-                   100 - st_test_r['se_mlp_median_gamma'][zero_mask].mean()/st_test_r['se_wrf'][zero_mask].mean()*100,           
+                   100 - st_test_r['se_mlp_median_gamma'][nonzero_mask].mean()/st_test_r['se_wrf'][nonzero_mask].mean()*100,           
                   )
                  )
             
@@ -97,10 +97,11 @@ def plot_timeseries(st_test_r, likelihood_fn, xmin, xmax, figsize=(30,6), p=0.05
                     y2=st_test_r['high_ci'],
                     alpha=0.1)
 
-    st_test_r['model_precipitation'].plot(
+    st_test_r['wrf_prc0.
+    p'].plot(
                 marker='x',markersize=msize,linewidth=lwidth, label='WRF', color='red')
 
-    st_test_r['wrf_bcp'].plot(
+    st_test_r['wrf_bc_prcp'].plot(
                 marker='x',markersize=msize,linewidth=lwidth, label='BC WRF', color='orange')
 
     st_test_r['Prec'].plot(
