@@ -59,7 +59,11 @@ class MLP(nn.Module):
         self.hidden_channels = hidden_channels
         self.likelihood = likelihood_fn
         
-        if self.likelihood == 'bgmm':
+        if self.likelihood == 'gamma':
+            self.out_channels = 2
+        if self.likelihood == 'ggmm':
+            self.out_channels = 5   
+        elif self.likelihood == 'bgmm':
             self.out_channels = 3
         elif self.likelihood == 'b2gmm':
             self.out_channels = 6
@@ -111,8 +115,13 @@ class MLP(nn.Module):
             x = self.relu(layer(x))
         x = self.out(x)
         ####
-
-        if self.likelihood=='bgmm':
+        if self.likelihood=='gamma':
+            x[:,:] = self.exp(x[:,:]) # alpha, beta
+            return x
+        elif self.likelihood=='ggmm':
+            x[:,:] = self.exp(x[:,:]) # alpha, beta
+            return x
+        elif self.likelihood=='bgmm':
             x[:,0] = self.sigmoid(x[:,0]) # pi
             x[:,1:] = self.exp(x[:,1:]) # alpha, beta
             return x
@@ -128,8 +137,90 @@ class MLP(nn.Module):
             x[:,6] = self.exp(x[:,-1]) # t : threshold 
             return x
 
+def gamma_logpdf(obs, alpha, beta, reduction='mean'):
+    """Benroulli-Gamma mixture model log-density.
+
+    Args:
+        obs (tensor): Inputs.
+        alpha (tensor): 
+        beta (tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        tensor: Log-density.
+    """
+    
+    #pdb.set_trace()
+
+    obs = obs.flatten()
+    b_mask = obs == 0
+
+    epsilon = 1
+    obs[b_mask] = obs[b_mask] + epsilon
+
+    logp = Gamma(concentration=alpha, rate=beta).log_prob(obs)
+
+    if not reduction:
+        return logp
+    elif reduction == 'sum':
+        return torch.sum(logp)
+    elif reduction == 'mean':
+        return torch.mean(logp)
+    elif reduction == 'batched_mean':
+        return torch.mean(torch.sum(logp, 1))
+    else:
+        raise RuntimeError(f'Unknown reduction "{reduction}".')
+
+def ggmm_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
+    """Benroulli-Gamma-Gamma mexture model log-density.
+
+    Args:
+        obs (tensor): Inputs.
+        alpha1 (tensor): 
+        beta1 (tensor):
+        alpha1 (tensor): 
+        beta1 (tensor):
+        q (tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    b_mask = obs == 0
+
+    epsilon = 1
+    obs[b_mask] = obs[b_mask] + epsilon
+    
+    
+    #pdb.set_trace()
+
+    mixture_weights = torch.stack([q,1-q]).permute([1,0]) # REVIEW
+    mixture_alphas = torch.stack([alpha1,alpha2]).permute([1,0])
+    mixture_betas = torch.stack([beta1,beta2]).permute([1,0])
+
+    mix = torch.distributions.Categorical(mixture_weights)
+    comp = torch.distributions.Gamma(mixture_alphas, mixture_betas)
+    gmm = torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp)   
+
+    logp = gmm.log_prob(obs)
+
+    if not reduction:
+        return logp
+    elif reduction == 'sum':
+        return torch.sum(logp)
+    elif reduction == 'mean':
+        return torch.mean(logp)
+    elif reduction == 'batched_mean':
+        return torch.mean(torch.sum(logp, 1))
+    else:
+        raise RuntimeError(f'Unknown reduction "{reduction}".')
+
 def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
-    """Benroulli-Gamma mexture model log-density.
+    """Benroulli-Gamma mixture model log-density.
 
     Args:
         obs (tensor): Inputs.
@@ -152,6 +243,43 @@ def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
     g_mask = obs > 0
 
     logp[g_mask] = torch.log((1-pi[g_mask])) + Gamma(concentration=alpha[g_mask], rate=beta[g_mask]).log_prob(obs[g_mask])
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    if not reduction:
+        return logp
+    elif reduction == 'sum':
+        return torch.sum(logp)
+    elif reduction == 'mean':
+        return torch.mean(logp)
+    elif reduction == 'batched_mean':
+        return torch.mean(torch.sum(logp, 1))
+    else:
+        raise RuntimeError(f'Unknown reduction "{reduction}".')
+
+def bgumm_logpdf(obs, pi, alpha, beta, reduction='mean'):
+    """Benroulli-Gumbel mixture model log-density.
+
+    Args:
+        obs (tensor): Inputs.
+        pi (tensor): 
+        alpha (tensor): 
+        beta (tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        tensor: Log-density.
+    """
+    
+    #pdb.set_trace()
+
+    obs = obs.flatten()
+    logp = torch.zeros(obs.shape)
+    
+    b_mask = obs == 0
+    g_mask = obs > 0
+
+    logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=alpha[g_mask], scale=beta[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
     if not reduction:
@@ -223,6 +351,8 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean')
         pi (tensor): 
         alpha (tensor): 
         beta (tensor):
+        q (tensor):
+        t (tensor):
         reduction (str, optional): Reduction. Defaults to no reduction.
             Possible values are "sum", "mean", and "batched_mean".
 
@@ -291,13 +421,20 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, print_progr
 
 def loss_fn(outputs, labels, model):
         
-    if model.likelihood == 'bgmm':
-        loss = -bgmm_logpdf(labels, pi=outputs[:,0], alpha=outputs[:,1], beta=outputs[:,2], reduction='mean')
+    if model.likelihood == 'gamma':
+        loss = -gamma_logpdf(labels, alpha=outputs[:,0], beta=outputs[:,1], reduction='mean')
+    
+    elif model.likelihood == 'ggmm':
+        loss = -ggmm_logpdf(labels, alpha1=outputs[:,0], alpha2=outputs[:,1], 
+                             beta1=outputs[:,2], beta2=outputs[:,3], q=outputs[:,4], reduction='mean')
 
+    elif model.likelihood == 'bgmm':
+        loss = -bgmm_logpdf(labels, pi=outputs[:,0], alpha=outputs[:,1], beta=outputs[:,2], reduction='mean')
+    
     elif model.likelihood == 'b2gmm':
         loss = -b2gmm_logpdf(labels, pi=outputs[:,0], alpha1=outputs[:,1], alpha2=outputs[:,2], 
                              beta1=outputs[:,3], beta2=outputs[:,4], q=outputs[:,5], reduction='mean')
-    
+
     elif model.likelihood == 'b2sgmm':
         loss = -b2sgmm_logpdf(labels, pi=outputs[:,0], alpha1=outputs[:,1], alpha2=outputs[:,2], 
                              beta1=outputs[:,3], beta2=outputs[:,4], q=outputs[:,5], t=outputs[:,6], reduction='mean')
@@ -328,7 +465,25 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     return gmm
 
 def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
-    if likelihood_fn == 'bgmm':
+    if likelihood_fn == 'gamma':
+        alpha = df['alpha']
+        beta = df['beta']
+
+        quantile = perc
+        return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
+    
+    elif likelihood_fn == 'ggmm':
+        alpha1 = df['alpha1']
+        beta1 = df['beta1']
+        alpha2 = df['alpha2']
+        beta2 = df['beta2']
+        q = df['q']
+        
+        quantile = perc
+        dist = gmm_fn(alpha1, alpha2, beta1, beta2 , q)
+        return torch.quantile(dist.sample([sample_size]), quantile).numpy()
+
+    elif likelihood_fn == 'bgmm':
         pi = df['pi']
         alpha = df['alpha']
         beta = df['beta']
@@ -382,7 +537,27 @@ def mixture_percentile_gamma_only(df, perc, likelihood_fn, sample_size=1000):
 def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_intervals=False):
     new_df = df[df['Station'].isin(st_names_test)].copy()
     
-    if model.likelihood == 'bgmm':
+    if model.likelihood == 'gamma':
+        new_df['alpha'] = outputs[:,0]
+        new_df['beta'] = outputs[:,1] 
+
+        new_df['mean'] = new_df['alpha']/new_df['beta']
+
+    elif model.likelihood == 'ggmm':
+        new_df['alpha1'] = outputs[:,0]
+        new_df['alpha2'] = outputs[:,1] 
+        new_df['beta1'] = outputs[:,2]
+        new_df['beta2'] = outputs[:,3]
+        new_df['q'] = outputs[:,4]
+        
+        new_df['mean'] =  gmm_fn(alpha1 = outputs[:,0],
+                                alpha2 =  outputs[:,1],
+                                beta1 = outputs[:,2],
+                                beta2 = outputs[:,3],
+                                q = outputs[:,4]
+                                ).mean
+    
+    elif model.likelihood == 'bgmm':
         new_df['pi'] = outputs[:,0]
         new_df['alpha'] = outputs[:,1]
         new_df['beta'] = outputs[:,2] 
@@ -414,7 +589,7 @@ def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_inter
         new_df['alpha1'] = outputs[:,1]
         new_df['alpha2'] = outputs[:,2] 
         new_df['beta1'] = outputs[:,3]
-        new_df['beta2'] = outpu.ts[:,4]
+        new_df['beta2'] = outputs[:,4]
         new_df['q'] = outputs[:,5]
         new_df['t'] = outputs[:,6]
 
@@ -434,12 +609,12 @@ def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_inter
     new_df['median_gamma'] = new_df.apply(mixture_percentile_gamma_only, axis=1, args=(0.5, model.likelihood))
     #new_df['median_gamma'] = new_df['median_gamma'] * new_df['occurrence']
     
-    new_df['se_wrf'] = (new_df['model_precipitation'] - new_df['Prec'])**2
-    new_df['se_bcp'] = (new_df['wrf_bcp'] - new_df['Prec'])**2
+    new_df['se_wrf'] = (new_df['wrf_prcp'] - new_df['Prec'])**2
+    new_df['se_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec'])**2
     new_df['se_mlp'] = (new_df['mean'] - new_df['Prec'])**2
     
-    new_df['e_wrf'] = (new_df['model_precipitation'] - new_df['Prec'])
-    new_df['e_bcp'] = (new_df['wrf_bcp'] - new_df['Prec'])
+    new_df['e_wrf'] = (new_df['wrf_prcp'] - new_df['Prec'])
+    new_df['e_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec'])
     new_df['e_mlp'] = (new_df['mean'] - new_df['Prec'])
 
     new_df['se_mlp_median'] = (new_df['median'] - new_df['Prec'])**2 
