@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch
 from stheno.torch import B, GP, EQ, Normal
 
+"""Acknowledgement: this class constructor was provided by Wessel Bruisma. Thanks!"""
+
 # Detect device.
 if torch.cuda.is_available():
     device = "cuda"
@@ -33,10 +35,7 @@ class ApproximatePosterior(nn.Module):
         # Redirect methods to `dist`.
         for name in ["kl", "sample"]:
             setattr(self, name, getattr(self.dist, name))
-
-
-
-
+        
 
 if __name__ == "__main__":
 
@@ -47,11 +46,13 @@ if __name__ == "__main__":
 
     f = GP(EQ().stretch(0.2))
     x = torch.randn(1000, 2, device=device)
+    x_ind = torch.randn(100, 2, device=device)
 
     # Compute ELBO (roughly).
 
     # Build approximate posterior:
     q = ApproximatePosterior(100).to(device)
+    q.build_normal()
 
     # KL:
     kl = q.kl(f(x_ind))
