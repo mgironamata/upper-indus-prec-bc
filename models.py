@@ -32,6 +32,8 @@ class MLP(nn.Module):
         
         if self.likelihood == None:
             self.out_channels = 1
+        elif self.likelihood == 'gaussian':
+            self.out_channels = 2
         elif self.likelihood == 'gamma':
             self.out_channels = 2
         elif self.likelihood == 'ggmm':
@@ -42,6 +44,8 @@ class MLP(nn.Module):
             self.out_channels = 6
         elif self.likelihood == 'b2sgmm':
             self.out_channels = 7
+        elif self.likelihood == 'btgmm':
+            self.out_channels = 4
  
         #self.f = self.build_weight_model()
         self.exp = torch.exp
@@ -94,7 +98,10 @@ class MLP(nn.Module):
         
         if self.likelihood==None:
             return x
-        if self.likelihood=='gamma':
+        elif self.likelihood=='gaussian':
+            x[:,1] = self.exp(x[:,1])
+            return x
+        elif self.likelihood=='gamma':
             x[:,:] = self.exp(x[:,:]) # alpha, beta
             return x
         elif self.likelihood=='ggmm':
@@ -116,6 +123,10 @@ class MLP(nn.Module):
             x[:,5] = self.sigmoid(x[:,-2]) # q : weight parameter for gamma mixture model (TO REVIEW)
             x[:,6] = self.exp(x[:,-1]) # t : threshold 
             return x
+        elif self.likelihood=='btgmm':
+            x[:,0] = self.sigmoid(x[:,0]) # pi
+            x[:,1:-1] = self.exp(x[:,1:]) # alpha, beta
+            x[:-1] = self.exp(x[:-1]) # threshold
 
 class SimpleCNN(nn.Module):
 

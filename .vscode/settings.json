@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "C:\\ProgramData\\Miniconda3\\python.exe"
+    "python.pythonPath": "/Users/marron31/miniconda3/envs/upperindus/bin/python",
+    "git.ignoreLimitWarning": true
 }
