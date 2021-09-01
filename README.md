@@ -1,1 +1,1 @@
-# upper-indus-prec-bc
+# Bias correction of daily precipitation in the Upper Indus basin 
