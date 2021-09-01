@@ -36,6 +36,8 @@ class MLP(nn.Module):
             self.out_channels = 2
         elif self.likelihood == 'gamma':
             self.out_channels = 2
+        elif self.likelihood == 'gamma_nonzero':
+            self.out_channels = 2
         elif self.likelihood == 'ggmm':
             self.out_channels = 5   
         elif self.likelihood == 'bgmm':
@@ -51,23 +53,28 @@ class MLP(nn.Module):
         self.exp = torch.exp
         self.sigmoid = torch.sigmoid
 
-        # Linear model
-        if self.linear_model:
-            self.relu = nn.Identity()
-        else:
-            self.relu = nn.ReLU()
+        # # Linear model
+        # if self.linear_model:
+        #     self.relu = nn.Identity()
+        # else:
+        self.relu = nn.ReLU()
 
         self.dropout = nn.Dropout(self.dropout_rate)
 
         # Hidden layers
-        self.hidden = nn.ModuleList()
-        self.hidden.append(nn.Linear(self.in_channels, self.hidden_channels[0]))
-        
-        for k in range(len(self.hidden_channels)-1):
-            self.hidden.append(nn.Linear(self.hidden_channels[k], self.hidden_channels[k+1]))
+        if self.linear_model:
+            self.lin = nn.Linear(self.in_channels, self.out_channels)
+        else:
+            self.hidden = nn.ModuleList()
+            self.hidden.append(nn.Linear(self.in_channels, self.hidden_channels[0]))
+            
+            for k in range(len(self.hidden_channels)-1):
+                self.hidden.append(nn.Linear(self.hidden_channels[k], self.hidden_channels[k+1]))
 
-         # Output layer
-        self.out = nn.Linear(self.hidden_channels[-1], self.out_channels)  
+            # Output layer
+            self.out = nn.Linear(self.hidden_channels[-1], self.out_channels)  
+
+        
 
     def build_weight_model(self):
         """Returns a point-wise function that transforms the in_channels-dimensional
@@ -87,19 +94,21 @@ class MLP(nn.Module):
 
     def forward(self, x):
         
-        #x = self.f(x)
-        
-        # Feedforward
-        for layer in self.hidden[:]:
-            x = self.dropout(x)
-            x = self.relu(layer(x))
-        x = self.out(x)
-        ####
+        if self.linear_model:
+            x = self.lin(x)
+        else:
+            for layer in self.hidden[:]:
+                x = self.dropout(x)
+                x = self.relu(layer(x))
+            x = self.out(x)
         
         if self.likelihood==None:
             return x
         elif self.likelihood=='gaussian':
             x[:,1] = self.exp(x[:,1])
+            return x
+        elif self.likelihood=='gamma_nonzero':
+            x[:,:] = self.exp(x[:,:]) # alpha, beta
             return x
         elif self.likelihood=='gamma':
             x[:,:] = self.exp(x[:,:]) # alpha, beta
@@ -232,5 +241,12 @@ class GeoStatCNN(nn.Module):
 
 
 if __name__ == "__main__":
-        network = GeoStatCNN(in_channels=1, in_features=3, out_features=2)
-        print("Number of parameters is: ", sum(p.numel() for p in network.parameters() if p.requires_grad))
+
+    network = MLP(in_channels=5, 
+            hidden_channels=[10], 
+            likelihood_fn='bgmm', # 'gaussian', gamma', 'ggmm', bgmm', 'b2gmm', 'b2sgmm'
+            dropout_rate=0,
+            linear_model=True
+           )
+    # network = GeoStatCNN(in_channels=1, in_features=3, out_features=2)
+    print("Number of parameters is: ", sum(p.numel() for p in network.parameters() if p.requires_grad))

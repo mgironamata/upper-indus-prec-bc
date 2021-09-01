@@ -2,3 +2,5 @@ _experiments/
 exports/
 runs/
 wandb/
+figures/
+predictions_1YR

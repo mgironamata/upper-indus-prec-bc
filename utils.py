@@ -6,6 +6,8 @@ from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 import scipy.stats as stats 
 
+import pdb
+
 __all__ =  ['init_sequential_weights',
             'gaussian_logpdf',
             'gamma_logpdf',
@@ -221,7 +223,7 @@ def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     comp = torch.distributions.Gamma(mixture_alphas, mixture_betas)
     gmm = torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp)   
 
-    logp[g_mask] = torch.log((1-pi[g_mask])) + gmm.log_prob(obs[g_mask])
+    logp[g_mask] = torch.log(1-pi[g_mask]) + gmm.log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
     if not reduction:
@@ -260,7 +262,7 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean')
     g2_mask = (obs > 0) * (obs >= t)
 
     logp[g1_mask] = torch.log((1-pi[g1_mask])) + torch.log((q[g1_mask])) + Gamma(concentration=alpha1[g1_mask], rate=beta1[g1_mask]).log_prob(obs[g1_mask])
-    logp[g2_mask] = torch.log((1-pi[g2_mask])) + torch.log((1- q[g2_mask])) + Gamma(concentration=alpha2[g2_mask], rate=beta2[g2_mask]).log_prob(obs[g2_mask])
+    logp[g2_mask] = torch.log((1-pi[g2_mask])) + torch.log((1-q[g2_mask])) + Gamma(concentration=alpha2[g2_mask], rate=beta2[g2_mask]).log_prob(obs[g2_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
     if not reduction:
@@ -301,10 +303,17 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         optimizer.zero_grad()
 
         outputs = model(inputs)
-        loss = loss_fn(outputs, labels, model)                 
-        loss.backward()
+        loss = loss_fn(outputs, labels, inputs, model)                
 
-        optimizer.step()
+        if loss.item() != 0: 
+            
+            loss.backward()
+            
+            for param in optimizer.param_groups[0]['params']:
+                # Bit of regularisation
+                nn.utils.clip_grad_value_(param, 10)
+
+            optimizer.step()
         
         train_losses.append(loss.item())
         
@@ -313,7 +322,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         for i, (inputs, labels) in enumerate(valid_loader):
 
             outputs = model(inputs)
-            loss = loss_fn(outputs, labels, model)
+            loss = loss_fn(outputs, labels, inputs, model)
             valid_losses.append(loss.item())
 
         if test_loader != None:
@@ -321,7 +330,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
             for i, (inputs, labels) in enumerate(test_loader):
 
                 outputs = model(inputs)
-                loss = loss_fn(outputs, labels, model)
+                loss = loss_fn(outputs, labels, inputs, model)
                 test_losses.append(loss.item())
              
             
@@ -335,7 +344,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
 
-def loss_fn(outputs, labels, model, reduction='mean'):
+def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     """Computes loss function (log-probability of labels).
 
     Args:
@@ -349,13 +358,25 @@ def loss_fn(outputs, labels, model, reduction='mean'):
     """
         
     if model.likelihood == None:
-        loss = Fv.mse_loss(outputs, labels)
+        mask = inputs[:,0] > inputs[:,0].mode().values.item() 
+        indices = mask.nonzero()
+        ratio = len(indices)/len(outputs)
+        loss = Fv.mse_loss(outputs[indices], labels[indices]) * ratio if len(indices)>0 else torch.tensor(0)
 
     elif model.likelihood == 'gaussian':
-        loss = -gaussian_logpdf(labels, mu=outputs[:,0], sigma=outputs[:,1], reduction=reduction)
+        mask = inputs[:,0] > inputs[:,0].mode().values.item() 
+        indices = mask.nonzero()
+        ratio = len(indices)/len(outputs)
+        loss = -gaussian_logpdf(labels, mu=outputs[:,0][indices], sigma=outputs[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
     
     elif model.likelihood == 'gamma':
         loss = -gamma_logpdf(labels, alpha=outputs[:,0], beta=outputs[:,1], reduction=reduction)
+
+    elif model.likelihood == 'gamma_nonzero':
+        mask = inputs[:,0] > inputs[:,0].mode().values.item() 
+        indices = mask.nonzero()
+        ratio = len(indices)/len(outputs)
+        loss = -gamma_logpdf(labels, alpha=outputs[:,0][indices], beta=outputs[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
     
     elif model.likelihood == 'ggmm':
         loss = -ggmm_logpdf(labels, alpha1=outputs[:,0], alpha2=outputs[:,1], 
@@ -396,9 +417,43 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     
     return gmm
 
+
 def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
     
-    if likelihood_fn == 'bgmm':
+    if likelihood_fn == 'gaussian':
+
+        mu = df['mu']
+        sigma = df['sigma']
+        perc = df[series]
+        occurrence = df['occurrence'] 
+
+        quantile = perc
+        ppf = 0
+        while ppf <= 0:
+            quantile = np.random.uniform(0,1)
+            ppf = stats.norm.ppf(quantile,loc=mu, scale=sigma)
+        return ppf * occurrence
+
+    elif likelihood_fn == 'gamma':
+
+        alpha = df['alpha']
+        beta = df['beta']
+        perc = df[series]
+
+        quantile = perc
+        return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
+
+    elif likelihood_fn == 'gamma_nonzero':
+
+        alpha = df['alpha']
+        beta = df['beta']
+        perc = df[series]
+        occurrence = df['occurrence'] 
+
+        quantile = perc
+        return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta) * occurrence
+    
+    elif likelihood_fn == 'bgmm':
 
         pi = df['pi']
         alpha = df['alpha']
@@ -472,7 +527,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         else:
             return 0
 
-def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_intervals=False, calculate_errors=True, draw_samples=True, n_samples=1):
+def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_intervals=False, draw_samples=True, n_samples=1):
     if type(st_names_test)==type(None):
         new_df = df.copy()
     else:  
@@ -480,15 +535,29 @@ def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_inter
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
     if model.likelihood == 'gamma':
         new_df['alpha'] = outputs[:,0]
-        new_df['beta'] = outputs[:,1] 
-
+        new_df['beta'] = outputs[:,1]
         new_df['mean'] = new_df['alpha']/new_df['beta']
+
+        new_df[f'perc_median'] = 0.5
+        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+    
+    elif model.likelihood == 'gamma_nonzero':
+        new_df['alpha'] = outputs[:,0]
+        new_df['beta'] = outputs[:,1]
+        new_df['mean'] = new_df['alpha']/new_df['beta']
+
+        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
+
+        new_df[f'perc_median'] = 0.5
+        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
     
     elif model.likelihood == 'gaussian':
         new_df['mu'] = outputs[:,0]
         new_df['sigma'] = outputs[:,1]
 
         new_df['mean'] = new_df['mu']
+
+        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
 
     elif model.likelihood == 'ggmm':
         new_df['alpha1'] = outputs[:,0]
@@ -546,46 +615,41 @@ def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_inter
 
         ### work in progress ###
 
-        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+        #new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
 
-        new_df['pi_q'] = new_df['pi'] + new_df['q']
-        new_df['low_gamma_occurrence'] = new_df['pi_q'].apply(lambda x: 1 if x < 0.5 else 0) # NOT CORRECT
+        #new_df['pi_q'] = new_df['pi'] + new_df['q']
+        #new_df['high_gamma_occurrence'] = new_df['pi_q'].apply(lambda x: 1 if x < 0.5 else 0) # NOT CORRECT
         # new_df['high_gamma'] = 1 - new_df['']
 
         new_df['mean'] = new_df['occurrence']*(new_df['low_gamma_occurrence']*new_df['alpha1']/new_df['beta1'] + (1-new_df['low_gamma_occurrence'])*new_df['alpha2']/new_df['beta2'])
     
+    elif type(model.likelihood) ==type(None):
+        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
+        new_df['sample_0'] = outputs.squeeze() * new_df['occurrence']
+        draw_samples = False
+        confidence_intervals = False
+    
     if draw_samples:
         for i in range(n_samples):
             new_df[f'uniform_{i}'] = new_df.apply(lambda x: np.random.uniform(0,1),axis=1)
-            new_df[f'sample_{i}'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}')
+            new_df[f'sample_{i}'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}').astype('float64')
 
     # new_df['median'] = new_df.apply(mixture_percentile, axis=1, args=(0.5, model.likelihood))
     # new_df['median'] = new_df['median'] * new_df['occurrence']
 
     # new_df['median_gamma'] = new_df.apply(mixture_percentile_gamma_only, axis=1, args=(0.5, model.likelihood))
     # new_df['median_gamma'] = new_df['median_gamma'] * new_df['occurrence']
-    
-    if calculate_errors:
-        new_df['se_wrf'] = (new_df['wrf_prcp'] - new_df['Prec'])**2 
-        new_df['se_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec'])**2 
-        new_df['se_mlp_mean'] = (new_df['mean'] - new_df['Prec'])**2 
-        new_df['se_mlp_median'] = (new_df['median'] - new_df['Prec'])**2 
-        # new_df['se_mlp_median_gamma'] = (new_df['median_gamma'] - new_df['Prec'])**2 
-
-        new_df['e_wrf'] = (new_df['wrf_prcp'] - new_df['Prec']) 
-        new_df['e_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec']) 
-        # new_df['e_mlp'] = (new_df['mean'] - new_df['Prec'])
-
-        if draw_samples:
-            for i in range(n_samples):
-                new_df[f'se_mlp_sample_{i}'] = (new_df[f'sample_{i}'] - new_df['Prec'])**2
-                new_df[f'e_mlp_sample_{i}'] = (new_df[f'sample_{i}'] - new_df['Prec'])
-
-        
 
     if confidence_intervals:
-        new_df['low_ci'] = new_df.apply(mixture_percentile, axis=1, args=(p, model.likelihood))
-        new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-p, model.likelihood))
+
+        new_df[f'perc_low_ci'] = p
+        new_df[f'low_ci'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_low_ci')
+
+        new_df[f'perc_high_ci'] = 1-p
+        new_df[f'high_ci'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_high_ci')
+
+        #new_df['low_ci'] = new_df.apply(mixture_percentile, axis=1, args=(p, model.likelihood))
+        #new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-p, model.likelihood))
                                               
     return new_df
 

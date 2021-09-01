@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np 
 from datetime import datetime
 import geopandas
-import torch
 import scipy.stats as stats 
+import pdb
 
 from utils import mixture_percentile
 
@@ -74,68 +74,74 @@ def print_summary_of_results(st_test, likelihood_fn, alldays=True, drydays=True,
         if wetdays or drydays:
             print("-------------------------------------------------------------------------------")
 
-def plot_timeseries(st_test_r, likelihood_fn, xmin, xmax, figsize=(30,6), p=0.05, 
+def plot_timeseries(st_test_r, likelihood_fn, xmin, xmax, p=0.05, 
                     show_obs=True, show_raw_model=True, show_bc_baseline=True,
                     show_mean=True, show_median=True, show_median_gamma=True, show_confidence=True, show_sample=True,
-                    complete_title=True):
+                    complete_title=True, show_legend=True, ax=None):
     
-    st_test_r.set_index(['Date'], inplace=True)
-    st_test_r = st_test_r.loc[xmin:xmax].copy()
+    df = st_test_r.set_index(['Date'])
+    df = df.loc[xmin:xmax].copy()
 
-    date = st_test_r.index.values
+    date = df.index.values
 
-    rand_test_st = st_test_r['Station'].unique()[0]
+    # rand_test_st = df['Station'].unique()[0]
 
-    st_test_r['low_ci'] = st_test_r.apply(mixture_percentile, axis=1, args=(p, likelihood_fn))
-    st_test_r['high_ci'] = st_test_r.apply(mixture_percentile, axis=1, args=(1-p, likelihood_fn))
+    # st_test_r['low_ci'] = st_test_r.apply(mixture_percentile, axis=1, args=(p, likelihood_fn))
+    # st_test_r['high_ci'] = st_test_r.apply(mixture_percentile, axis=1, args=(1-p, likelihood_fn))
 
-    msize = 5
+    marker = 'o'
+    msize = 3
     lwidth = 0.5
-    
-    plt.figure(figsize=figsize)
-
-    if show_mean:
-        st_test_r['mean'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth+1, label='MLP (mean)', color='blue')
-    if show_median:
-        st_test_r['median'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth+1, label='MLP (median)', color='black')
-    if show_median_gamma:
-        st_test_r['median_gamma'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth+1, linestyle='--', label='MLP (median gamma)', color='black')
-    
-    if show_sample:
-        st_test_r['sample'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth+1, label='MLP (sample)', color='blue')
-
-    if show_confidence:
-        plt.fill_between(x=date,
-                        y1=st_test_r['low_ci'], 
-                        y2=st_test_r['high_ci'],
-                        alpha=0.1)
 
     if show_raw_model:
-        st_test_r['wrf_prcp'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth, label='WRF', color='red')
+        df['wrf_prcp'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, label='Raw WRF', color='red', ax=ax)
 
     if show_bc_baseline:
-        st_test_r['wrf_bc_prcp'].plot(
-                marker='x',markersize=msize,linewidth=lwidth, label='BC WRF', color='orange')
+        df['wrf_bc_prcp'].plot(
+                marker=marker, markersize=msize,linewidth=lwidth, label='Bannister et al. (2019)', color='orange', ax=ax)
     if show_obs:
-        st_test_r['Prec'].plot(
-                    marker='x',markersize=msize,linewidth=lwidth+1, label='Obs', color='green')
+        df['Prec'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, label='Observation', color='green', ax=ax)
 
-
-    if complete_title:
-        plt.title(f"Test station : {rand_test_st}   (MLP likelihood : {likelihood_fn})", fontsize=15)
-    else:
-        plt.title(f"Test station : {rand_test_st}")
+    if show_mean:
+        df['mean'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, label='MLP (mean)', color='blue', ax=ax)
+    if show_median:
+        df['median'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, label='MLP (median)', color='black', ax=ax)
+    if show_median_gamma:
+        df['median_gamma'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, linestyle='--', label='MLP (median gamma)', color='black', ax=ax)
     
-    plt.xlim([datetime.strptime(xmin,"%Y-%m-%d"),          
+    if show_sample:
+        df['sample'].plot(
+                    marker=marker, markersize=msize,linewidth=lwidth, label='MLP (sample)', color='blue', ax=ax)
+
+    if show_confidence:
+        ax.fill_between(x=date,
+                        y1=df['low_ci'].astype('float64'), 
+                        y2=df['high_ci'].astype('float64'),
+                        alpha=0.4)
+
+
+
+    # if complete_title:
+    #     plt.title(f"Test station : {rand_test_st}   (MLP likelihood : {likelihood_fn})", fontsize=15)
+    # else:
+    #     plt.title(f"Test station : {rand_test_st}")
+    
+    ax.set_xlim([datetime.strptime(xmin,"%Y-%m-%d"),          
               datetime.strptime(xmax,"%Y-%m-%d")])
+
+    ax.set_ylabel('Precipitation (mm/day)')
+    ax.set_xlabel('')
     
-    plt.legend()
-    plt.show()
+    ax.grid(False)
+    
+    if show_legend:
+        ax.legend()
+
 
 def plot_parameter_histograms(model, outputs):
 
@@ -165,10 +171,17 @@ def plot_parameter_histograms(model, outputs):
     fig, ax = plt.subplots(1,n, figsize=(6*n, 5), sharex=False, sharey=False)
         
     for i in range(n):
-        ax[i].hist(outputs[:,i].numpy(), bins=50)
-        ax[i].title.set_text('%s (mean: %.2f, min: %.2f)' % (variable[i], 
-                                                            outputs[:,i].mean(), 
-                                                            outputs[:,i].min()))
+
+        if (i==0) and (model.likelihood=='bgmm'):
+            ax[i].hist(1-outputs[:,i].numpy(), bins=50, density=False)
+        else:
+            ax[i].hist(outputs[:,i].numpy(), bins=50, density=False)
+        
+        ax[i].title.set_text(f'{variable[i].capitalize()}')
+        # ax[i].title.set_text('%s (mean: %.2f, median: %.2f)' % (variable[i].capitalize(), 
+        #                                                     outputs[:,i].mean(), 
+        #                                                     outputs[:,i].median()))
+        ax[i].set_yticks([])
 
 def plot_sample_distribution(model, outputs, test_dataset, force_non_zero=True):
 
