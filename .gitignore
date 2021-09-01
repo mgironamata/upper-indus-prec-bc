@@ -4,6 +4,6 @@ runs/
 wandb/
 figures/
 predictions_1YR/
-__pycache__
+__pycache__/
 .ipynb_checkpoints/
 .vscode/
