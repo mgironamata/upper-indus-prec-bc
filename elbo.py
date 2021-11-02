@@ -33,7 +33,7 @@ class ApproximatePosterior(nn.Module):
         self.dist = Normal(mean, cov)
 
         # Redirect methods to `dist`.
-        for name in ["kl", "sample"]:
+        for name in ["kl", "sample"]:  
             setattr(self, name, getattr(self.dist, name))
         
 

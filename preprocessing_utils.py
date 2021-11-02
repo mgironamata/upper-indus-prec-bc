@@ -1,9 +1,9 @@
 import numpy as np 
 import pandas as pd
-import rasterio
 import os, glob
 from pyproj import CRS
 import geopandas
+import rasterio
 
 __all__ = ['import_dataframe',
            'drop_df_NaNs',

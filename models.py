@@ -123,7 +123,7 @@ class MLP(nn.Module):
             return x
         elif self.likelihood=='b2gmm':
             x[:,0] = self.sigmoid(x[:,0]) # pi
-            x[:,1:-1] = self.exp(x[:,1:-1]) #  alpha1, alpha2, beta1, beta2
+            x[:,1:-1] = self.exp(x[:,1:-1]) # alpha1, alpha2, beta1, beta2
             x[:,-1] = self.sigmoid(x[:,-1]) # q : weight parameter for gamma mixture model (#TO REVIEW)
             return x
         elif self.likelihood=='b2sgmm':

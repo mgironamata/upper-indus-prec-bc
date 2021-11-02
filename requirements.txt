@@ -1,0 +1,15 @@
+geopandas==0.10.2
+ipython==7.29.0
+matplotlib==3.4.2
+numpy==1.20.3
+pandas==1.2.4
+plum_dispatch==1.0.0
+pyproj==3.2.1
+rasterio==1.2.10
+scikit_learn==1.0.1
+scipy==1.6.3
+stheno==1.1.0
+torch==1.10.0
+unicode_slugify==0.1.5
+varz==0.6.3
+xarray==0.18.2
