@@ -5,7 +5,10 @@ from torch.distributions.gamma import Gamma
 
 from utils import init_sequential_weights
 
-__all__ = ['MLP','SimpleCNN','GeoStatCNN']
+__all__ = ['MLP',
+           'SimpleCNN',
+           'GeoStatCNN',
+          ]
 
 class MLP(nn.Module):
     """Multilayer perceptron

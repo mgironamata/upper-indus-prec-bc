@@ -14,6 +14,7 @@ else:
 
 __all__ = ['ApproximatePosterior']
 
+
 class ApproximatePosterior(nn.Module):
     def __init__(self, dim: int):
         nn.Module.__init__(self)
