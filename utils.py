@@ -18,10 +18,16 @@ __all__ =  ['init_sequential_weights',
             'train_epoch',
             'loss_fn',
             'gmm_fn',
+            'sample',
             'mixture_percentile',
             'build_results_df',
             'RunningAverage',
-            'pairwise_errors'
+            'pairwise_errors',
+            'sample_mc',
+            'truncate_sample',
+            'count_zeros',
+            'SMAPE',
+            'add_to_dict'
             ]
             
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -722,3 +728,39 @@ def mixture_percentile_gamma_only(df, perc, likelihood_fn, sample_size=1000):
             return torch.quantile(dist.sample([sample_size]), perc).numpy()
         else:
             return 0
+
+def sample_mc(model, theta_dict):
+    if model.likelihood == 'bgmm':
+        pi = theta_dict['pi']
+        alpha = theta_dict['alpha']
+        beta = theta_dict['beta']
+        
+        perc = np.random.uniform(0,1)
+        
+        if perc > pi:
+            quantile = (perc-pi)/(1-pi)
+            return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
+        else:
+            return 0
+
+def truncate_sample(x, threshold):
+    if x<threshold:
+        return x
+    else:
+        return threshold
+
+def count_zeros(x,threshold=0):
+    return np.sum(x<=threshold)
+
+def SMAPE(df, sim, obs):
+    if abs(df[sim] - df[obs]) == 0:
+        return 0
+    else:
+        return abs(df[sim] - df[obs]) / (df[sim] + df[obs])
+
+def add_to_dict(xs,d):
+    for x in xs:
+        print(x)
+        key = f'{x=}'.split('=')[0]
+        d[key] = x
+    return d

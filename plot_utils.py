@@ -4,9 +4,20 @@ import numpy as np
 from datetime import datetime
 import geopandas
 import scipy.stats as stats 
+import seaborn as sns
+import time
+from preprocessing_utils import clip_time_period
+from IPython.display import clear_output
 import pdb
+import torch
 
-from utils import mixture_percentile
+import rasterio
+from rasterio.plot import show
+
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import statsmodels.api as sm
+
+from utils import mixture_percentile, gmm_fn
 
 __all__ = [ 'print_summary_of_results',
             'plot_timeseries',
@@ -14,7 +25,14 @@ __all__ = [ 'print_summary_of_results',
             'plot_parameter_histograms',
             'plot_sample_distribution',
             'plot_squared_errors',
-            'season_apply']
+            'plot_bgmm_params_annual_timeseries',
+            'plot_loglik_epochs_multirun',
+            'plot_sample_from_bernoulli_gamma_mixture_model',
+            'plot_acf_for_random_station',
+            'plot_sample_from_2gamma_mixure_model',
+            'plot_seasonal_timeseries_for_station_year',
+            'plot_map_stations_cv(st_test'
+            ]
 
 def build_geodataframe(df, x, y):
     return geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df[x], df[y]))
@@ -141,7 +159,6 @@ def plot_timeseries(st_test_r, likelihood_fn, xmin, xmax, p=0.05,
     
     if show_legend:
         ax.legend()
-
 
 def plot_parameter_histograms(model, outputs):
 
@@ -285,16 +302,286 @@ def plot_squared_errors(st_test):
     plt.legend()
     plt.show()
 
-def season_apply(df):
-    # Premonsoon: Apr-May
-    if (df['month'] >= 4) and (df['month'] <= 5):
-        return 'Premonsoon (AM)'
-    # Monsoon: June-Jul-Aug-Sept
-    elif (df['month'] >= 6) and (df['month'] <= 9):
-        return 'Monsoon (JJAS)'
-    # Postmonsoon: Oct-Nov-Dec
-    elif (df['month'] >= 10) and (df['month'] <= 12):
-        return 'Postmonsoon (OND)'
-    # Winter: Jan-Feb-Mar
-    elif (df['month'] >= 1) or (df['month'] <= 3):
-        return 'Winter (JFM)'
+def plot_bgmm_params_annual_timeseries(st_test, station='Pandoh', start_time='2003-01-01', end_time='2003-12-31'):
+
+    """ Creates a figure with 3 subplots plotting annual evolution of the BGMM parameters"""
+
+    df = st_test[st_test['Station']==station]
+    df = clip_time_period(df, start_time, end_time)
+
+    fig,[ax1,ax2] = plt.subplots(2,1,figsize=(15,10))
+    ax1.plot(df['pi'],label='pi')
+    ax1.plot(df['alpha'],label='alpha')
+    ax1.plot(df['beta'],label='beta')
+    ax1.legend()
+    ax2.plot(df['wrf_prcp'],label='wrf')
+    ax2.plot(df['Prec'],label='obs')
+    ax2.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_loglik_epochs_multirun(df):
+
+    sns.set_theme(context='paper',style='white',font_scale=1.4)
+    plt.figure(figsize=(10,5))
+
+    linecolors = {"0" : "tab:blue",
+                  "1" : "tab:orange",
+                  "2" : "tab:green",
+                  "3" : "tab:red",
+                  "4" : "tab:purple",
+                  "5" : "tab:brown",
+                  "6" : "tab:pink",
+                  "7" : "tab:grey",
+                  "8" : "tab:olive",
+                  "9" : "tab:cyan"}
+
+    linestyles = {"bgmm" : "solid",
+                 "b2gmm" : "dashed",
+                 "gamma" : "solid"}
+
+    markerstyles = {"0" : "o",
+                    "0.2" : "x",
+                    "0.3" : "^",
+                    "0.4" : ">"}
+
+    style_dict = {"linestyles" : linestyles,
+                 "linecolors" : linecolors}
+
+    for a in df.likelihood_fn.unique():
+        for b in df.k.unique():
+            for d in df.dropout_rate.unique(): 
+                c = df[(df.likelihood_fn == a) & (df.k == b) & (df.dropout_rate == d)].copy()
+                plt.plot(c.epoch, 
+                         c.valid_loss, 
+                         label=f'{a}_k{b}_d{d}', 
+                         linestyle=linestyles[a],
+                         color = linecolors[str(b)],
+                         marker = markerstyles[str(d)],
+                         linewidth = 1,
+                         markersize = 5
+                        )
+
+    plt.legend(loc='upper left')
+    plt.xlabel('epoch')
+    plt.ylabel('-loglik')
+    plt.tight_layout
+    plt.show()
+
+def plot_sample_from_bernoulli_gamma_mixture_model(inputs, outputs, tensor_y):
+
+    interval=5
+
+    flag = 0
+    if flag:
+
+        while True:
+
+            x = np.linspace (0, 100, 200) 
+            r = np.random.randint(len(inputs))
+            print(r)
+
+            pi = outputs[r,0]
+            a = outputs[r,1]
+            rate = outputs[r,2]
+
+            y1 = stats.gamma.cdf(x, a=a, scale=1/rate) #a is alpha, loc is beta???
+
+            mu = stats.gamma.mean(a=a, scale=1/rate)
+            median = stats.gamma.median(a=a, scale=1/rate)
+            mixture_median = stats.gamma.ppf((0.5 - pi) / (1 - pi), a=a, scale=1/rate) if pi < 0.5 else 0
+            mixture_mean = (1-pi) * mu
+
+            print("mean: %.2f" % mu)
+            print("median: %.2f" % median)
+            print("mixture median: %.2f" % mixture_median)
+            print("mixture mean: %.2f" % mixture_mean)
+
+            modelled = inputs[r,0]*x_std[0] + x_mean[0]
+            observed = tensor_y[r,0]
+
+            if modelled > 0:
+
+                #mu = a/rate if pi<0.5 else 0
+
+                plt.plot(0,pi,"oy", label="pi = %.2f" % pi)
+
+                plt.plot(mu, 0, "or", mfc="white", label="mu = %.2f" % mu)
+                plt.plot(median, 0, "xr", label="median = %.2f" % median)  
+                plt.plot(mixture_median, 0, "ok", mfc="white", label="mixture median = %.2f" % mixture_median)  
+                plt.plot(mixture_mean, 0, "^k", label="mixture median = %.2f" % mixture_mean)  
+
+                plt.plot(modelled, 0, "x", label="WRF = %.2f" % modelled)
+
+                plt.plot(observed, 0, "xg", label="observed = %.2f" % observed)
+                plt.plot(x, pi + (1-pi)*y1, "y-", label=(r'$\alpha=%.2f, \beta=%.2f$') % (a, rate))
+
+                plt.ylim([-0.05,1])
+                plt.xlim([-0.2, max([1,modelled,observed,mu])*1.20])
+                plt.legend(loc="upper right")
+                plt.show()
+
+                time.sleep(interval)
+
+            else:
+                pass
+
+            clear_output(wait=True)
+
+def plot_acf_for_random_station(st_test, seasons):
+    acf_dict = {}
+
+    stations = st_test['Station'].unique()
+    random_station = np.random.randint(len(stations))
+    st_test_station = st_test[st_test['Station']==stations[random_station]]
+    print(st_test_station['Station'].unique())
+
+    fig, axes = plt.subplots(2, 2, figsize=(20,10))
+
+    for index, ax in enumerate(axes.flatten()):
+
+        for col in list(np.array(columns)[[0,2,3]]):
+            
+            x = st_test_station[st_test_station['season']==seasons[index]][col]
+            
+            if seasons[index] not in acf_dict:
+                acf_dict[seasons[index]] = {}
+                
+            y = acf_dict[seasons[index]][col] = sm.tsa.pacf(x,nlags=30)
+            
+            ax.plot(y[1:], 'o--', label="col")
+            
+    #         plot_pacf(x,
+    #                 ax=ax,
+    #                 use_vlines=False,
+    #                 alpha=1,
+    #                 zero=False,
+    #                 title=seasons[index])
+            
+        ax.set_xlabel("Lag (days)")
+        ax.set_ylabel("Autocorrelation factor")
+        ax.set_title(seasons[index])
+
+        if index==0:
+            pass
+            ax.legend(["Observations","Bias corrected WRF","MLP"])
+            #ax.legend(columns[0:3])
+
+    #plt.suptitle(f"Autocorrelation factors by season (test station: {st_test_station['Station'].unique()}) ")
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_sample_from_2gamma_mixure_model(outputs, test_tensor_y, k=1, bins=1000, hist_max=50):
+    
+    r = np.random.randint(outputs.shape[0], size=k)
+    print(r)
+    
+    dist = gmm_fn(pi=outputs[r,0],
+                alpha1=outputs[r,1],
+                alpha2=outputs[r,2],
+                beta1=outputs[r,3],
+                beta2=outputs[r,4],
+                q=outputs[r,5],
+                )
+
+    plt.figure(figsize=(15,5))
+    plt.plot(np.linspace(0, hist_max,bins),(torch.histc(dist.sample([1000000]), bins=bins, min=0, max=hist_max)))
+    plt.plot(dist.mean,np.zeros(k),'or')
+    plt.plot(test_tensor_y[r],np.zeros(k),'xk',ms=10)
+    plt.show()
+
+def plot_seasonal_timeseries_for_station_year(st_test, station_name='Rampur', year=2000):
+
+    sns.set_theme(context='paper', style='white', font_scale=1.4)
+
+    #fig, axes = plt.subplots(4,1,figsize=(20,13))
+
+    # year = 2000
+
+    # test_station_names = st_test['Station'].unique()
+    # random_index = np.random.randint(len(test_station_names))
+    # random_station = test_station_names[random_index]
+
+    # random_station = 'Rampur'
+    # print(random_station)
+
+    st_test_r = st_test[st_test['Station']==station_name].copy()
+    st_test_r['sample'] = st_test_r['sample_0']
+
+    fig = plt.figure()
+    fig.set_figheight(12)
+    fig.set_figwidth(20)
+
+    ax1 = plt.subplot2grid(shape=(4, 122), loc=(0, 0), colspan=90)
+    ax2 = plt.subplot2grid(shape=(4, 122), loc=(1, 0), colspan=61)
+    ax3 = plt.subplot2grid(shape=(4, 122), loc=(2, 0), colspan=122)
+    ax4 = plt.subplot2grid(shape=(4, 122), loc=(3, 0), colspan=92)
+
+    for index, ax in enumerate([ax1,ax2,ax3,ax4]):
+            
+        if index == 0:
+            xmin = f"{year}-01-01"
+            xmax = f"{year}-04-01" 
+        elif index == 1:
+            xmin = f"{year}-04-01"
+            xmax = f"{year}-06-01" 
+        elif index == 2:
+            xmin = f"{year}-06-01"
+            xmax = f"{year}-10-01"
+        elif index == 3:
+            xmin = f"{year}-10-01"
+            xmax = f"{year+1}-01-01" 
+        
+        show_legend = True if index == 0 else False
+
+        plot_timeseries(st_test_r, 
+                        likelihood_fn='b2gmm',
+                        xmin = xmin,
+                        xmax = xmax,
+                        show_mean=False,
+                        show_median=False, 
+                        show_median_gamma=False,
+                        show_confidence=True,
+                        show_sample=True,
+                        complete_title=False,
+                        show_legend=show_legend,
+                        ax=ax
+                        )
+        
+        if show_legend:
+            leg = ax.get_legend()
+            new_labels = ['Raw WRF (B19)', 'Corr WRF (B19)','Observations','BG2MM$_{[100]}$']
+            leg.set_title('')
+            for t, l in zip(leg.texts, new_labels): t.set_text(l)
+
+        x_pos = [0.01, 0.015, 0.0075, 0.01]
+        ax.text(x_pos[index], 0.85, f'{seasons[index]}', fontweight="bold", transform=ax.transAxes)
+
+    plt.tight_layout(w_pad=-0.5)
+    # plt.savefig(f"figures/timeseries_seasons_{random_station}_{year}.png", dpi=300)
+    plt.show()
+
+def plot_map_stations_cv(st_test):
+
+    path = '../../PhD/gis/exports/beas_watershed.shp'
+    beas_watershed = geopandas.read_file(path)
+
+    path = '../../PhD/gis/exports/sutlej_watershed.shp'
+    sutlej_watershed = geopandas.read_file(path)
+
+    out_fp_masked_lcc = r'/Users/marron31/Google Drive/PhD/srtm/mosaic_masked_lcc.tif'
+    dem_masked_lcc = rasterio.open(out_fp_masked_lcc)
+
+    gdf = build_geodataframe(st_test.groupby('Station').mean(), x='X', y='Y')
+
+    fig, ax = plt.subplots(1, 1, figsize=(10,5), constrained_layout=False)
+    gdf.plot(ax=ax, column='k_fold', legend=False, cmap='Set1', markersize=5, marker="o", linewidth=3)
+    show(dem_masked_lcc, cmap='terrain', ax=ax, alpha=0.25)
+    beas_watershed.plot(ax=ax, edgecolor='k', color='None', linewidth=1)
+    sutlej_watershed.plot(ax=ax, edgecolor='k', color='None', linewidth=1)
+    ax.set_axis_off()
+    ax.set_aspect(1)
+    plt.tight_layout()
+    plt.savefig('figures/kfold_cv_map.png',dpi=300)
+    plt.show()

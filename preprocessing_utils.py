@@ -14,9 +14,39 @@ __all__ = ['import_dataframe',
            'disjunctive_union_lists',
            'mosaic_tiles',
            'mask_raster',
-           'FilterCompleteStationYears',
-           'FilterByList'
+           'filter_complete_station_years',
+           'FilterByList',
+           'sort_by_quantile',
+           'add_year_month_season',
+           'season_apply',
+           'add_yesterday_observation'   
            ]
+
+def sort_by_quantile(st):
+    """Re-arrange dataframe of station data so that model simulations and observations match 
+    based on quantiles, for each station separately
+    
+    Inputs:
+    
+    Outputs:
+    
+    """
+    
+    QM_data = {}
+    list_stations = st['Station'].unique()
+    
+    for i, s in enumerate(list_stations):
+        QM_data[s] = st[st['Station']==s].sort_values(by='wrf_prcp')
+        QM_data[s]['Prec'] = QM_data[s]['Prec'].sort_values().values
+
+        if i == 0:
+            QM_df = QM_data[s]
+        else:
+            QM_df = QM_df.append(QM_data[s])
+
+    QM_df.reset_index(drop=True)
+    
+    return QM_df
 
 def import_dataframe(path, verbose=False):
     """ Reads DataFrame from path
@@ -74,7 +104,13 @@ def clip_time_period(df, start, end, verbose=False):
         print(f"Length of clipped dataframe: {len(df_clip)}")
     return df_clip
 
-def FilterCompleteStationYears(df):
+def add_year_month_season(st):
+    st['Year'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).year
+    st['month'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).month
+    st['season'] = st.apply(season_apply, axis=1) 
+    return st
+
+def filter_complete_station_years(df):
     grouped_df = df.groupby(['Station','Year']).count().reset_index()
     pairs = list(grouped_df[grouped_df['Prec']>=365][['Station','Year']].apply(tuple,1))
     df = df[df[['Station','Year']].apply(tuple, 1).isin(pairs)]
@@ -227,4 +263,23 @@ def mask_raster(in_raster_path, out_raster_path, mask):
     # Save to file
     with rasterio.open(out_raster_path, "w", **out_meta) as dest:
         dest.write(out_image)
-        
+
+def season_apply(df):
+    # Premonsoon: Apr-May
+    if (df['month'] >= 4) and (df['month'] <= 5):
+        return 'Premonsoon (AM)'
+    # Monsoon: June-Jul-Aug-Sept
+    elif (df['month'] >= 6) and (df['month'] <= 9):
+        return 'Monsoon (JJAS)'
+    # Postmonsoon: Oct-Nov-Dec
+    elif (df['month'] >= 10) and (df['month'] <= 12):
+        return 'Postmonsoon (OND)'
+    # Winter: Jan-Feb-Mar
+    elif (df['month'] >= 1) or (df['month'] <= 3):
+        return 'Winter (JFM)'
+
+def add_yesterday_observation(st):
+    """Add observed precipitation value from previous day"""
+    st['obs_yesterday'] = st.groupby('Station')['Prec'].shift(1)
+    st.dropna(inplace=True)
+    return st
