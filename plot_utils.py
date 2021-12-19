@@ -31,7 +31,10 @@ __all__ = [ 'print_summary_of_results',
             'plot_acf_for_random_station',
             'plot_sample_from_2gamma_mixure_model',
             'plot_seasonal_timeseries_for_station_year',
-            'plot_map_stations_cv(st_test'
+            'plot_map_stations_cv(st_test',
+            'table_of_predictions',
+            'print_ks_scores',
+            'plot_seasonal_boxplot_per_station'
             ]
 
 def build_geodataframe(df, x, y):
@@ -584,4 +587,134 @@ def plot_map_stations_cv(st_test):
     ax.set_aspect(1)
     plt.tight_layout()
     plt.savefig('figures/kfold_cv_map.png',dpi=300)
+    plt.show()
+
+def table_of_predictions(predictions, seasons):
+
+    table = []
+    headers = ['Model']
+
+    for i, (k, v) in enumerate(predictions.items()):
+        if i==0:
+            row_a = ['WRF']
+            row_b = ['BC WRF']
+        row = [k]
+        st_test = v['k_all']
+        for season in seasons:
+            if i==0:
+                headers.append(f'{season} mean')
+                headers.append(f'{season} median')
+            
+            ks_lista, ks_listb = [], []
+            ks_list = []
+
+            for s in st_test['Station'].unique():
+                df = st_test[st_test['Station']==s].copy()
+                rvs = df[df['season']==season]['Prec']
+                
+                cdfa = df[df['season']==season]['wrf_prcp']
+                cdfb = df[df['season']==season]['wrf_bc_prcp']
+                kstesta = scipy.stats.ks_2samp(rvs, cdfa, alternative='two-sided', mode='auto')
+                kstestb = scipy.stats.ks_2samp(rvs, cdfb, alternative='two-sided', mode='auto')
+                ks_lista.append(kstesta)
+                ks_listb.append(kstestb)
+
+                for sample in sample_cols:
+                    cdf = np.array([])
+                    cdf_s = np.array(df[df['season']==season][sample])
+                    cdf = np.concatenate((cdf,cdf_s), axis=None)
+                    
+                kstest = scipy.stats.ks_2samp(rvs, cdf, alternative='two-sided', mode='auto')
+                ks_list.append(kstest)
+            
+            if i ==0:
+                row_a.append(f'{np.mean(ks_lista):.4f}')
+                row_a.append(f'{np.median(ks_lista):.4f}')
+                row_b.append(f'{np.mean(ks_listb):.4f}')
+                row_b.append(f'{np.median(ks_listb):.4f}')
+            
+            row.append(f'{np.mean(ks_list):.4f}')
+            row.append(f'{np.median(ks_list):.4f}')
+            
+        if i== 0:
+            table.append(row_a)
+            table.append(row_b)
+        print(k)
+            
+        table.append(row)
+        
+    return table
+    
+def print_ks_scores(st_test, seasons, columns):
+
+    for season in seasons:
+        print(f"--- {season} ---")
+        for col in columns[1:]:
+            rvs = st_test[st_test['season']==season]['Prec']
+            cdf = st_test[st_test['season']==season][col]
+            #kstest = scipy.stats.kstest(rvs, cdf, args=(), N=20, alternative='two-sided', mode='auto')
+            kstest = scipy.stats.ks_2samp(rvs, cdf, alternative='two-sided', mode='auto')
+            print(f"{col} : {kstest.statistic:.4f}")
+
+def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, basins, seasons, filter_by_basin_flag, y_limits=None):
+
+    fig, axes = plt.subplots(4,len(basins),figsize=(16,10))
+
+    for i, season in enumerate(seasons):
+        
+        data2 = data1[data1['season']==season].copy()
+        
+        for j, basin in enumerate(basins):
+            
+            ax = axes[i, j] if not(filter_by_basin_flag) else axes[i]
+
+            st_basin = st_test[st_test['Basin']==basin]
+
+            sorted_stations = st_basin.groupby(['Station']).mean().sort_values('Z').reset_index()['Station'].unique()
+            sorted_elevations = [int(a) for a in st_basin.groupby(['Station']).mean().sort_values('Z').reset_index()['Z'].unique()]
+
+            sorted_labels = [f'{b} ({a})' for a,b in zip(sorted_elevations,sorted_stations)]
+
+            data3 = data2[data2['Station'].isin(sorted_stations)].copy()
+    #         data3['value'] = abs(data3['value']).copy()
+
+            sns.boxplot(data=data3, x='Station',y='value',hue='variable', ax=ax, order=sorted_stations, width=0.65, palette='pastel')
+            
+            if len(y_limits)==2: ax.set_ylim(y_limits[0], y_limits[1])
+            elif len(y_limits)==4: ax.set_ylim(y_limits[i][0], y_limits[i][1])
+
+            ax.grid()
+            
+            if i == 0:
+                pass #ax.set_title(basin)
+            if i == 3:
+                ax.set_xlabel('Station (sorted by elevation in m.a.s.l.)')
+                ax.set_xticklabels(sorted_labels,rotation=90, horizontalalignment='center')
+            else:
+                ax.set_xlabel(None)
+                ax.set_xticklabels([])
+                
+            if j == 0:
+                ax.set_ylabel(yaxislabel)
+                pass #ax.set_ylabel(f'{season}')
+            else:
+                ax.set_yticklabels([])
+                ax.set_ylabel(None)
+            
+            ax.text(0.01, 0.9, f'{season} in {basin}', fontweight="bold", transform=ax.transAxes, size='small')
+            
+            # ax.set_ylim(-400,400)
+            # plt.ylabel('Correlation factor')
+            # plt.xlabel('Lag (days)')
+            
+            if (i == j == 0):
+                ax.legend(loc='best')
+                leg = ax.get_legend()
+                leg.set_title('')
+                for t, l in zip(leg.texts, new_labels): t.set_text(l)
+            else:
+                ax.get_legend().remove()
+
+    plt.tight_layout(h_pad=0.5, w_pad=0.5)
+    # plt.savefig('figures/seasonal-boxplot-smape.png',dpi=300)
     plt.show()
