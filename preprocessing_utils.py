@@ -105,15 +105,15 @@ def clip_time_period(df, start, end, verbose=False):
     return df_clip
 
 def add_year_month_season(st):
-    st['Year'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).year
+    st['year'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).year
     st['month'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).month
     st['season'] = st.apply(season_apply, axis=1) 
     return st
 
 def filter_complete_station_years(df):
-    grouped_df = df.groupby(['Station','Year']).count().reset_index()
-    pairs = list(grouped_df[grouped_df['Prec']>=365][['Station','Year']].apply(tuple,1))
-    df = df[df[['Station','Year']].apply(tuple, 1).isin(pairs)]
+    grouped_df = df.groupby(['Station','year']).count().reset_index()
+    pairs = list(grouped_df[grouped_df['Prec']>=365][['Station','year']].apply(tuple,1))
+    df = df[df[['Station','year']].apply(tuple, 1).isin(pairs)]
     return df
 
 def FilterByList(df,series,value_list):

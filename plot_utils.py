@@ -38,6 +38,7 @@ __all__ = [ 'print_summary_of_results',
             'print_ks_scores',
             'plot_seasonal_boxplot_per_station',
             'plot_cdf_per_season',
+            'plot_loglik_model_comparison',
             ]
 
 def build_geodataframe(df, x, y):
@@ -723,7 +724,7 @@ def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, ba
     plt.show()
 
 
-def plot_cdf_per_season(st_test,seasons,columns):
+def plot_cdf_per_season(st_test,seasons,columns, labels):
 
     sns.set_theme(context='paper',style='white',font_scale=1.4)
 
@@ -755,4 +756,39 @@ def plot_cdf_per_season(st_test,seasons,columns):
             ax.legend(loc='center')
 
     plt.tight_layout()
+    plt.show()
+
+def plot_loglik_model_comparison(loglik_values):
+
+    sns.set_theme(context='paper',style='whitegrid',font_scale=1.6)
+    g = sns.catplot(x = "hidden_channels",
+                y = "valid_loss",
+                #hue = "linear_model",
+                col = "likelihood_fn",
+                data = loglik_values,
+                kind = "box",
+                order=['VGLM','[10]','[30]','[50]','[100]','[10, 10]','[30, 30]','[50, 50]','[100, 100]'],
+                col_order=['gamma','bgmm','b2gmm'],
+                sharey = False,
+                #split = True,
+                #palette = 'Set2'
+                color='dodgerblue'
+            )
+
+    g.set_xticklabels(rotation=45)
+    g.set_ylabels('log-likelihood')
+
+    # leg = g.legend
+    # leg.set_title('')
+    # new_labels = ['Linear','MLP']
+    # for t, l in zip(leg.texts, new_labels): t.set_text(l)
+
+    titles = ['Gamma','BGMM','B2GMM']
+
+    for i, ax in enumerate(g.axes.flatten()):
+        ax.set_title(titles[i]) 
+    #     ax.set_ylim(1.15,1.30) if i>0 else ax.set_ylim(-6.77,-6.35)
+        ax.set_xlabel('Model [hidden layers and units per layer]') if i==1 else ax.set_xlabel('')
+
+    # g.savefig('figures/loglik_comparison.png',dpi=300)
     plt.show()
