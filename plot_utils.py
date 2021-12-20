@@ -17,6 +17,8 @@ from rasterio.plot import show
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import statsmodels.api as sm
 
+import scipy
+
 from utils import mixture_percentile, gmm_fn
 
 __all__ = [ 'print_summary_of_results',
@@ -31,10 +33,11 @@ __all__ = [ 'print_summary_of_results',
             'plot_acf_for_random_station',
             'plot_sample_from_2gamma_mixure_model',
             'plot_seasonal_timeseries_for_station_year',
-            'plot_map_stations_cv(st_test',
+            'plot_map_stations_cv',
             'table_of_predictions',
             'print_ks_scores',
-            'plot_seasonal_boxplot_per_station'
+            'plot_seasonal_boxplot_per_station',
+            'plot_cdf_per_season',
             ]
 
 def build_geodataframe(df, x, y):
@@ -371,7 +374,7 @@ def plot_loglik_epochs_multirun(df):
     plt.tight_layout
     plt.show()
 
-def plot_sample_from_bernoulli_gamma_mixture_model(inputs, outputs, tensor_y):
+def plot_sample_from_bernoulli_gamma_mixture_model(inputs, outputs, tensor_y, x_mean, x_std):
 
     interval=5
 
@@ -431,7 +434,7 @@ def plot_sample_from_bernoulli_gamma_mixture_model(inputs, outputs, tensor_y):
 
             clear_output(wait=True)
 
-def plot_acf_for_random_station(st_test, seasons):
+def plot_acf_for_random_station(st_test, seasons, columns):
     acf_dict = {}
 
     stations = st_test['Station'].unique()
@@ -494,7 +497,7 @@ def plot_sample_from_2gamma_mixure_model(outputs, test_tensor_y, k=1, bins=1000,
     plt.plot(test_tensor_y[r],np.zeros(k),'xk',ms=10)
     plt.show()
 
-def plot_seasonal_timeseries_for_station_year(st_test, station_name='Rampur', year=2000):
+def plot_seasonal_timeseries_for_station_year(st_test, seasons, station_name='Rampur', year=2000):
 
     sns.set_theme(context='paper', style='white', font_scale=1.4)
 
@@ -589,7 +592,7 @@ def plot_map_stations_cv(st_test):
     plt.savefig('figures/kfold_cv_map.png',dpi=300)
     plt.show()
 
-def table_of_predictions(predictions, seasons):
+def table_of_predictions(predictions, seasons, sample_cols):
 
     table = []
     headers = ['Model']
@@ -717,4 +720,39 @@ def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, ba
 
     plt.tight_layout(h_pad=0.5, w_pad=0.5)
     # plt.savefig('figures/seasonal-boxplot-smape.png',dpi=300)
+    plt.show()
+
+
+def plot_cdf_per_season(st_test,seasons,columns):
+
+    sns.set_theme(context='paper',style='white',font_scale=1.4)
+
+    x_hist = st_test[st_test['season']=='DJF'][columns].to_numpy()
+    n_bins = 1000
+
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(8,8))
+
+    stations = st_test['Station'].unique()
+    random_station = np.random.randint(len(stations))
+    st_test_station = st_test[st_test['Station']==stations[random_station]]
+    print(st_test_station['Station'].unique())
+
+    for idx, ax in enumerate(axes.flatten()):
+
+        x_hist = st_test_station[st_test_station['season']==seasons[idx]][columns].to_numpy()
+        ax.hist(x_hist, n_bins, density=True, cumulative=True, histtype='step', label=labels)
+        
+        ax.set_ylim([0.5,1.01]) 
+        ax.set_xlim([0,50])
+        ax.set_xlabel('Precipitation (mm)') if idx>1 else None
+        ax.set_ylabel('Cumulative frequency') if idx%2==0 else None
+        ax.set_xticklabels([]) if not(idx>1) else None
+        ax.set_yticklabels([]) if not(idx%2==0) else None
+        
+        ax.text(0.05, 0.02, f'{seasons[idx]}', fontweight="bold", transform=ax.transAxes, size='small')
+        
+        if idx==0:
+            ax.legend(loc='center')
+
+    plt.tight_layout()
     plt.show()
