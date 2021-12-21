@@ -4,6 +4,10 @@ import os, glob
 from pyproj import CRS
 import geopandas
 import rasterio
+from sklearn.model_selection import KFold
+
+import torch
+from torch.utils.data import TensorDataset, DataLoader 
 
 __all__ = ['import_dataframe',
            'drop_df_NaNs',
@@ -19,7 +23,11 @@ __all__ = ['import_dataframe',
            'sort_by_quantile',
            'add_year_month_season',
            'season_apply',
-           'add_yesterday_observation'   
+           'add_yesterday_observation',
+           'create_cv_held_out_sets',
+           'create_station_dataframe',
+           'create_input_data',
+           'create_dataset'   
            ]
 
 def sort_by_quantile(st):
@@ -283,3 +291,118 @@ def add_yesterday_observation(st):
     st['obs_yesterday'] = st.groupby('Station')['Prec'].shift(1)
     st.dropna(inplace=True)
     return st
+
+def create_cv_held_out_sets(st_names, non_bc_st_names, split_by = 'station', include_non_bc_stations = True):
+
+    if split_by == 'station':
+        
+        split_dict = {}
+        kf = KFold(n_splits=10,shuffle=True)
+        #kf.get_n_splits(st_names)
+
+        for i, (train_index, test_index) in enumerate(kf.split(st_names)):
+            k = round(len(train_index)*0.8)
+            split_dict[f'k{i}'] = {f'train': list(st_names[train_index[:k]]) + non_bc_st_names if include_non_bc_stations else list(st_names[train_index[:k]]),
+                                   f'val' : st_names[train_index[k:]],
+                                   f'test' : st_names[test_index[:]]
+                                }
+            
+    elif split_by == 'year':
+        
+        split_dict = {}
+        kf = KFold(n_splits=5, shuffle=True)
+        years=np.array(range(1998,2008))
+
+        for i, (train_index, test_index) in enumerate(kf.split(years)):
+            k = round(len(train_index)*0.75)
+            split_dict[f'k{i}'] = {f'train': list(years[train_index[:k]]),
+                                   f'val' : years[train_index[k:]],
+                                   f'test' : years[test_index[:]]
+                                }
+    
+    return split_dict
+
+
+def create_station_dataframe(TRAIN_PATH, start, end, add_yesterday=True, basin_filter = None, filter_incomplete_years = True):
+
+    st = (import_dataframe(TRAIN_PATH)
+        .pipe(drop_df_NaNs, series='Prec')
+        .pipe(clip_time_period, start, end)
+        .pipe(add_year_month_season)
+        )  
+
+    # Add yesterday's observation
+    if add_yesterday: st = add_yesterday_observation(st)
+
+    # Filter incomplete years
+    if filter_incomplete_years: st = filter_complete_station_years(st)
+
+    # Filter by basin
+    if basin_filter is not None: st = st[st['Basin']==basin_filter]
+
+    # st['set'] = "train" 
+
+    # st_val = (import_dataframe(TEST_PATH) # Import dataframe
+    #     .pipe(drop_df_NaNs, series='Prec') # Drop NaNs
+    #     .pipe(clip_time_period, start, end) # Clip data temporally 
+    # )
+
+    # st_val['set'] = "test"
+
+    # # Append validation stations to training 
+    # st = st.append(st_val)
+
+    return st
+
+def create_input_data(st, predictors, predictand, split_dict, split_by='station', sort_by_quantile_flag=False):
+
+    data = {}
+
+    X = st[predictors].to_numpy()
+
+    x_mean = X.mean(axis=0)
+    x_std = X.std(axis=0)
+
+    for i in range(len(split_dict)):
+
+        if split_by=='station':
+            
+            data[f'set_train_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['train'])]
+            data[f'set_val_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['val'])]
+            data[f'set_test_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['test'])]
+                                    
+            if sort_by_quantile_flag:
+                data[f'set_train_{i}'] = sort_by_quantile(data[f'set_train_{i}'])
+                data[f'set_val_{i}'] = sort_by_quantile(data[f'set_val_{i}'])
+                                    
+            data[f'X_train_{i}'] = (data[f'set_train_{i}'][predictors].to_numpy() - x_mean) / x_std
+            data[f'X_val_{i}'] = (data[f'set_val_{i}'][predictors].to_numpy() - x_mean) / x_std
+            data[f'X_test_{i}'] = (data[f'set_test_{i}'][predictors].to_numpy() - x_mean) / x_std
+
+            data[f'Y_train_{i}'] = data[f'set_train_{i}'][predictand].to_numpy()
+            data[f'Y_val_{i}'] = data[f'set_val_{i}'][predictand].to_numpy()
+            data[f'Y_test_{i}'] = data[f'set_test_{i}'][predictand].to_numpy()
+
+        
+        elif split_by=='year':
+        
+            data[f'X_train_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['train'])][predictors].to_numpy() - x_mean) / x_std
+            data[f'X_val_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['val'])][predictors].to_numpy() - x_mean) / x_std
+            data[f'X_test_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['test'])][predictors].to_numpy() - x_mean) / x_std
+
+            data[f'Y_train_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['train'])][predictand].to_numpy()
+            data[f'Y_val_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['val'])][predictand].to_numpy()
+            data[f'Y_test_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['test'])][predictand].to_numpy()
+
+    # data['X_test'] = (st[st['Station'].isin(st_names_dict['test'])][predictors].to_numpy() - x_mean) / x_std
+    # data['Y_test'] = st[st['Station'].isin(st_names_dict['test'])][predictand].to_numpy()
+
+    # data['X_test2'] = (st_val[predictors].to_numpy() - x_mean) / x_std
+    # data['Y_test2'] = st_val[predictand].to_numpy()
+
+    return data, x_mean, x_std
+
+def create_dataset(data, split, d):
+    tensor_x = torch.Tensor(data[f'X_{split}'][:,:d])
+    tensor_y = torch.Tensor(data[f'Y_{split}'][:,:d])
+    return TensorDataset(tensor_x, tensor_y)
