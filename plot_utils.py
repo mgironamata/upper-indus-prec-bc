@@ -39,6 +39,7 @@ __all__ = [ 'print_summary_of_results',
             'plot_seasonal_boxplot_per_station',
             'plot_cdf_per_season',
             'plot_loglik_model_comparison',
+            'plot_losses'
             ]
 
 def build_geodataframe(df, x, y):
@@ -791,4 +792,18 @@ def plot_loglik_model_comparison(loglik_values):
         ax.set_xlabel('Model [hidden layers and units per layer]') if i==1 else ax.set_xlabel('')
 
     # g.savefig('figures/loglik_comparison.png',dpi=300)
+    plt.show()
+
+def plot_losses(train_losses, val_losses, test_losses):
+
+    sns.set_theme(context='paper',style='white',font_scale=1.4)
+    
+    plt.figure(figsize=(5,5))
+    plt.plot(train_losses)
+    plt.plot(val_losses)
+    plt.plot(test_losses)
+    plt.legend(["training","validation","test"])
+    plt.xlabel('epoch')
+    plt.ylabel('negative log-likelihood')
+    plt.title(f"Minimim validation loss: {min(val_losses):.4f}")
     plt.show()

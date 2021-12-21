@@ -6,7 +6,16 @@ from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 import scipy.stats as stats 
 
+import os
 
+
+from models import *
+from utils import *
+from experiment import *
+from runmanager import *
+from plot_utils import *
+from preprocessing_utils import *
+from torch.utils.data import TensorDataset, DataLoader 
 
 import pdb
 
@@ -29,7 +38,8 @@ __all__ =  ['init_sequential_weights',
             'truncate_sample',
             'count_zeros',
             'SMAPE',
-            'add_to_dict'
+            'add_to_dict',
+            'multirun'
             ]
             
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -766,3 +776,112 @@ def add_to_dict(xs,d):
         key = f'{x=}'.split('=')[0]
         d[key] = x
     return d
+
+def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='station'):
+
+    m = RunManager()
+    predictions={}
+
+    for run in RunBuilder.get_runs(params): 
+        
+        d = len(predictors)
+        
+        network = MLP(in_channels=d, 
+                hidden_channels=run.hidden_channels, 
+                likelihood_fn=run.likelihood_fn,
+                dropout_rate=run.dropout_rate,
+                linear_model=True,
+                )
+        
+        train_tensor_x = torch.Tensor(data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_tensor_y = torch.Tensor(data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
+
+        val_tensor_x = torch.Tensor(data[f'X_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_tensor_y = torch.Tensor(data[f'Y_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
+        
+        test_tensor_x = torch.Tensor(data[f'X_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_tensor_y = torch.Tensor(data[f'Y_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
+        
+        train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
+        val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
+        test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+        
+        optimizer = torch.optim.Adam(network.parameters(), lr=run.lr)
+        
+        change_folder = True
+        if change_folder:
+            experiment_name = f'{run}'
+            wd = WorkingDirectory(generate_root(experiment_name))
+        
+        m.begin_run(run, network, train_loader)
+        
+        train_losses = []
+        val_losses = []
+        
+        for epoch in range (epochs):
+            
+            m.begin_epoch()
+            
+            train_loss, val_loss, _ = train_epoch(network, 
+                                                optimizer, 
+                                                train_loader, 
+                                                val_loader, 
+                                                epoch=epoch, 
+                                                print_progress=True)
+                    
+            m.epoch_loss = train_loss
+            m.epoch_val_loss = val_loss
+            
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+                
+            m.end_epoch()
+            
+            save_as_best = True if val_loss == min(val_losses) else False
+            save_checkpoint(wd,network.state_dict(),is_best=save_as_best)
+        
+            PATH = os.path.join(wd.root,'e_%s_loss_%.3f.pth.tar' % (epoch, val_loss))
+            torch.save(network.state_dict(), PATH)
+            
+        load_best = True
+        if load_best:
+            network.load_state_dict(torch.load(os.path.join(wd.root,'model_best.pth.tar')))
+            
+        with torch.no_grad():
+            outputs = network(test_tensor_x)
+            # outputs = network(val_tensor_x)
+        
+        if split_by == 'year':
+            input_df = st[(st['year'].isin(split_dict[f'k{run.k}']['test']))] 
+            input_st_names = None
+        elif split_by == 'station':
+            input_df = st
+            input_st_names = split_dict[f'k{run.k}']['test']
+            
+        st_test = build_results_df(df=input_df,
+                                outputs=outputs, 
+                                st_names_test=input_st_names,                 
+                                model=network,
+                                draw_samples=True,
+                                n_samples=10,
+                                confidence_intervals= True,
+                                )
+        
+        key = f'{run.likelihood_fn}_{run.hidden_channels}_{run.linear_model}'
+        
+        if not(key in predictions.keys()):
+            predictions[key] = {} 
+            
+        predictions[key][f'k{run.k}'] = st_test
+        
+        SAVEPATH = os.path.join(wd.root, "st_test.pkl")
+        st_test.to_pickle(SAVEPATH)
+        
+        m.end_run()    
+        
+    m.save('results')
+
+    return st_test, predictions
