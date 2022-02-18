@@ -11,6 +11,8 @@ from IPython.display import clear_output
 import pdb
 import torch
 
+from tabulate import tabulate
+
 import rasterio
 from rasterio.plot import show
 
@@ -39,7 +41,10 @@ __all__ = [ 'print_summary_of_results',
             'plot_seasonal_boxplot_per_station',
             'plot_cdf_per_season',
             'plot_loglik_model_comparison',
-            'plot_losses'
+            'plot_losses',
+            'print_average_yearly_dd_and_ci',
+            'table_of_results',
+            'plot_cumulative_histograms_per_season',
             ]
 
 def build_geodataframe(df, x, y):
@@ -170,6 +175,8 @@ def plot_timeseries(st_test_r, likelihood_fn, xmin, xmax, p=0.05,
 
 def plot_parameter_histograms(model, outputs):
 
+    sns.set_theme(context='paper',style='white',font_scale=1.4)
+
     n = outputs.shape[1]
     
     if model.likelihood=='gamma':
@@ -207,6 +214,10 @@ def plot_parameter_histograms(model, outputs):
         #                                                     outputs[:,i].mean(), 
         #                                                     outputs[:,i].median()))
         ax[i].set_yticks([])
+    
+    plt.tight_layout()
+    # plt.savefig('figures/parameter_histograms.png',dpi=300)
+    plt.show()
 
 def plot_sample_distribution(model, outputs, test_dataset, force_non_zero=True):
 
@@ -652,6 +663,18 @@ def table_of_predictions(predictions, seasons, sample_cols):
     
 def print_ks_scores(st_test, seasons, columns):
 
+    """Print Kolmogorov-Smirnov scores.
+    
+    Inputs:
+        st_test :
+        seasons : 
+        columns : 
+    
+    Returns:
+        None
+        
+    """
+
     for season in seasons:
         print(f"--- {season} ---")
         for col in columns[1:]:
@@ -663,7 +686,24 @@ def print_ks_scores(st_test, seasons, columns):
 
 def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, basins, seasons, filter_by_basin_flag, y_limits=None):
 
-    fig, axes = plt.subplots(4,len(basins),figsize=(16,10))
+    """Plot seasonal boxplot per station.
+    
+    Inputs:
+        data1 : DataFrame
+        st_test : DataFrame
+        yaxislabel : 
+        new_labels : 
+        basins : 
+        seasons : 
+        filter_by_basin_flag : 
+        y_limits :
+    
+    Returns:
+        None
+
+    """
+
+    _, axes = plt.subplots(4,len(basins),figsize=(16,10))
 
     for i, season in enumerate(seasons):
         
@@ -685,8 +725,8 @@ def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, ba
 
             sns.boxplot(data=data3, x='Station',y='value',hue='variable', ax=ax, order=sorted_stations, width=0.65, palette='pastel')
             
-            if len(y_limits)==2: ax.set_ylim(y_limits[0], y_limits[1])
-            elif len(y_limits)==4: ax.set_ylim(y_limits[i][0], y_limits[i][1])
+            if y_limits is not None and len(y_limits)==2: ax.set_ylim(y_limits[0], y_limits[1])
+            elif y_limits is not None and len(y_limits)==4: ax.set_ylim(y_limits[i][0], y_limits[i][1])
 
             ax.grid()
             
@@ -723,7 +763,6 @@ def plot_seasonal_boxplot_per_station(data1, st_test, yaxislabel, new_labels, ba
     plt.tight_layout(h_pad=0.5, w_pad=0.5)
     # plt.savefig('figures/seasonal-boxplot-smape.png',dpi=300)
     plt.show()
-
 
 def plot_cdf_per_season(st_test,seasons,columns, labels):
 
@@ -806,4 +845,146 @@ def plot_losses(train_losses, val_losses, test_losses):
     plt.xlabel('epoch')
     plt.ylabel('negative log-likelihood')
     plt.title(f"Minimim validation loss: {min(val_losses):.4f}")
+    plt.show()
+
+def print_average_yearly_dd_and_ci(st_test, almost_dry, n_samples):
+
+    ci_dict = {}
+    dd_dict = {}
+    dd_dict_wrf = {}
+
+    for s in st_test['Station'].unique():
+        
+        ci_dict[s] = []
+        dd_dict[s] = []
+        dd_dict_wrf[s] = []
+
+        st_test_s = st_test[st_test["Station"]==s]
+        
+        for i in range(n_samples):
+            tail_high = (st_test_s[f'sample_{i}']>st_test_s['high_ci']).sum()
+            tail_low = (st_test_s[f'sample_{i}']<st_test_s['low_ci']).sum()
+            ci_dict[s].append((tail_high + tail_low) / len(st_test_s))
+            dd_dict[s].append((st_test_s[f'sample_{i}']>almost_dry).sum() / (st_test_s['Prec']>almost_dry).sum())
+            dd_dict_wrf[s].append((st_test_s[f'wrf_prcp']>almost_dry).sum() / (st_test_s['Prec']>almost_dry).sum())
+
+    ci_means = []
+    dd_means = []
+    dd_wrf_means = []
+
+    for k,v in ci_dict.items():
+        ci_means.append(np.mean(v))
+        #print(f'{k}: {np.mean(v):.4f}')
+    print(f'Average CI per station: {np.mean(ci_means):.3}')
+
+    for k,v in dd_dict.items():
+        dd_means.append(np.mean(v))
+        #print(f'{k}: {np.mean(v):.4f}')
+    print(f'Mean factor of dry days per station: {np.mean(dd_means):.4}') 
+
+    for k,v in dd_dict_wrf.items():
+        dd_wrf_means.append(np.mean(v))
+        #print(f'{k}: {np.mean(v):.4f}')
+    print(f'Mean factor of dry days per station (WRF): {np.mean(dd_wrf_means):.4}') 
+
+
+def table_of_results(predictions):
+    """Prints table of results. 
+    
+    Inputs:
+        predictions : dict
+    Returs:
+        None
+    
+    """
+
+    table = []
+    headers = ['Model']
+
+    for i, (k, v) in enumerate(predictions.items()):
+        if i==0:
+            row_a = ['WRF']
+            row_b = ['BC WRF']
+        row = [k]
+        st_test = v['k_all']
+        for season in seasons:
+            if i==0:
+                headers.append(f'{season} mean')
+                headers.append(f'{season} median')
+            
+            ci_lista, ci_listb = [], []
+            ci_list = []
+
+            for s in st_test['Station'].unique():
+                
+                df = st_test.loc[(st_test['Station']==s) & (st_test['season']==season)].copy()
+                
+                # if i == 0:
+                #     a_high = (df[f'wrf_prcp']>df['high_ci']).sum()
+                #     a_low = (df[f'wrf_prcp']<df['low_ci']).sum()
+                #     b_high = (df[f'wrf_prcp']>df['high_ci']).sum()
+                #     b_low = (df[f'wrf_prcp']<df['low_ci']).sum()
+                #     a_ci = (a_high + a_low) / len(df)
+                #     b_ci = (b_high + b_low) / len(df)
+
+                #     ci_lista.append(a_ci)
+                #     ci_listb.append(b_ci)
+                
+                c_high = (df[f'Prec']>df['high_ci']).sum()
+                c_low = (df[f'Prec']<df['low_ci']).sum()
+                
+                c_ci = (c_high) / len(df)
+
+
+                ci_list.append(c_ci)
+
+            # if i ==0:
+            #     row_a.append(f'{np.mean(ci_lista):.4f}')
+            #     row_a.append(f'{np.median(ci_lista):.4f}')
+            #     row_b.append(f'{np.mean(ci_listb):.4f}')
+            #     row_b.append(f'{np.median(ci_listb):.4f}')
+            
+            row.append(f'{np.mean(ci_list):.4f}')
+            row.append(f'{np.median(ci_list):.4f}')
+            
+        # if i== 0:
+        #     table.append(row_a)
+        #     table.append(row_b)
+        
+        print(k)
+            
+        table.append(row)     
+
+        print(tabulate(table, headers, tablefmt='latex_raw', disable_numparse=True))
+
+
+def plot_cumulative_histograms_per_season(seasonal_dict, seasons):
+    """Plot cumulative historgrams per season.
+    
+    Inputs:
+        seasonal_dict : dict --> 
+        seasons : list --> list of seasons 
+        
+    Returns:
+        None
+    
+    """
+    
+    sns.set_theme(context='paper',style='white',font_scale=2)
+    
+    plot_data = seasonal_dict['totals']
+    
+    _, axes = plt.subplots(1,4,figsize=(20,5))
+    for index, ax in enumerate(axes.flatten()):
+        season = seasons[index]
+        sns.histplot(data=plot_data[plot_data['season']==season],x='value',hue='variable', 
+                    bins=100, multiple='layer', element='step', stat='frequency',
+                    cumulative=True, fill=False, shrink=0.8, ax=ax)
+        ax.text(0.01, 0.95, f'{season}', fontweight="demibold", transform=ax.transAxes, size='small')
+        ax.get_legend().remove() if index>0 else None
+        ax.set_yticklabels([]) if index>0 else None
+        ax.set_ylabel('') if index>0 else None
+        ax.set_xlabel('Precipitation (mm/season)')
+        
+    plt.tight_layout()
     plt.show()

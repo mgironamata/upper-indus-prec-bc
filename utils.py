@@ -8,13 +8,14 @@ import scipy.stats as stats
 
 import os
 
-
 from models import *
 from utils import *
 from experiment import *
 from runmanager import *
-from plot_utils import *
-from preprocessing_utils import *
+
+# from plot_utils import *
+# from preprocessing_utils import *
+
 from torch.utils.data import TensorDataset, DataLoader 
 
 import pdb
@@ -39,7 +40,10 @@ __all__ =  ['init_sequential_weights',
             'count_zeros',
             'SMAPE',
             'add_to_dict',
-            'multirun'
+            'make_predictions',
+            'make_sequential_predictions',
+            'multirun',
+            'truncate_sample'
             ]
             
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -361,7 +365,6 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
-
 def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     """Computes loss function (log-probability of labels).
 
@@ -434,7 +437,6 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     gmm = torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp) 
     
     return gmm
-
 
 def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
     
@@ -545,7 +547,15 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         else:
             return 0
 
-def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_intervals=False, draw_samples=True, n_samples=1):
+def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None, x_std=None,
+                     confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False):
+    
+    if sequential_samples:
+        outputs = make_sequential_predictions(model, test_dataset, x_mean, x_std)
+    else:
+        outputs = make_predictions(model, test_dataset)
+    
+
     if type(st_names_test)==type(None):
         new_df = df.copy()
     else:  
@@ -648,9 +658,12 @@ def build_results_df(df, outputs, st_names_test, model, p=0.05, confidence_inter
         confidence_intervals = False
     
     if draw_samples:
-        for i in range(n_samples):
-            new_df[f'uniform_{i}'] = new_df.apply(lambda x: np.random.uniform(0,1),axis=1)
-            new_df[f'sample_{i}'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}').astype('float64')
+        if sequential_samples:
+            new_df['sample'] = outputs[:,-1]
+        else:
+            for i in range(n_samples):
+                new_df[f'uniform_{i}'] = new_df.apply(lambda x: np.random.uniform(0,1),axis=1)
+                new_df[f'sample_{i}'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}').astype('float64')
 
     # new_df['median'] = new_df.apply(mixture_percentile, axis=1, args=(0.5, model.likelihood))
     # new_df['median'] = new_df['median'] * new_df['occurrence']
@@ -777,6 +790,64 @@ def add_to_dict(xs,d):
         d[key] = x
     return d
 
+def make_predictions(model, test_dataset):
+
+    model.eval()
+
+    with torch.no_grad():
+        
+        test_inputs = test_dataset.tensors[0]
+        test_outputs = model(test_inputs)
+
+        #   test2_inputs = test2_dataset.tensors[0]
+        #   test2_outputs = model(test2_inputs)
+    
+    return test_outputs
+
+def make_sequential_predictions(model, test_dataset, x_mean, x_std):
+
+    model.eval()
+
+    with torch.no_grad():
+        
+        for index in range(len(test_dataset.tensors[0])):
+
+            if index==0:
+                prev_prediction = torch.tensor(0)
+            else:
+                prev_prediction = torch.tensor(norm_sample)
+                
+            test_input = torch.cat([test_dataset.tensors[0][index,:-1],
+                                    prev_prediction.unsqueeze(0)])
+            
+            test_output = model(test_input.unsqueeze(0).float())
+            
+            theta_params = ['pi','alpha','beta']
+            
+            theta_dict = {key:test_output[0,i] for i, key in enumerate(theta_params)}
+            
+            sample = sample_mc(model, theta_dict)
+            
+    #         sample = truncate_sample(sample, threshold=350)
+            
+            norm_sample = (sample - x_mean[-1])/x_std[-1]
+            
+            if index==0:
+                concat_test_outputs = torch.cat([test_output.squeeze(),
+                                torch.tensor(sample).unsqueeze(0)]).unsqueeze(0)
+            else:
+                concat_test_output = torch.cat([test_output.squeeze(),
+                            torch.tensor(sample).unsqueeze(0)]).unsqueeze(0)
+                            
+                concat_test_outputs = torch.cat([concat_test_outputs,
+                                        concat_test_output],dim=0)
+            
+            print(index) if index%10000==0 else None
+
+    # test_outputs = concat_test_outputs[:,:-1]
+
+    return concat_test_outputs
+
 def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='station'):
 
     m = RunManager()
@@ -885,3 +956,9 @@ def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='stat
     m.save('results')
 
     return st_test, predictions
+
+def truncate_sample(x, threshold=300):
+    if x>threshold:
+        return threshold
+    else:
+        return x

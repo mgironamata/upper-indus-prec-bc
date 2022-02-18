@@ -5,6 +5,7 @@ from pyproj import CRS
 import geopandas
 import rasterio
 from sklearn.model_selection import KFold
+import random, pickle 
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader 
@@ -27,8 +28,143 @@ __all__ = ['import_dataframe',
            'create_cv_held_out_sets',
            'create_station_dataframe',
            'create_input_data',
-           'create_dataset'   
+           'create_dataset',
+           'DataPreprocessing'  
            ]
+
+class DataPreprocessing():
+
+    def __init__(self, 
+                train_path : str, 
+                start : str, 
+                end : str, 
+                add_yesterday : bool = True, 
+                basin_filter : str = None, 
+                split_bias_corrected_only = True, # if True, validation and test sets will only include bias corrected stations.
+                filter_incomplete_years = True,
+                include_non_bc_stations = True,
+                split_by = 'station'
+                ) -> None:
+        
+        self.train_path = train_path
+        self.start = start
+        self.end = end
+        self.add_yesterday = add_yesterday
+        self.basin_filter = basin_filter
+        self.filter_incomplete_years = filter_incomplete_years
+        self.split_bias_corrected_only = split_bias_corrected_only
+        self.include_non_bc_stations = include_non_bc_stations
+        self.split_by = split_by
+
+        # Create station dataframe
+        self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = True)
+
+        # List bias-corrected and non-bias-corrected stations
+        self.bc_stations = list_bc_stations(self.st)
+        self.non_bc_stations = disjunctive_union_lists(self.st['Station'].unique(), self.bc_stations)
+
+        # Set of stations to be split into training, validation and test held out sets.
+        if self.split_bias_corrected_only:
+            self.st_names = list(set(self.bc_stations) & set(self.st['Station'].unique()))
+        else:
+            self.st_names = st['Station'][self.st['set']=='train'].unique()
+
+        # st_names_test = st['Station'][st['set']=='test'].unique()
+        self.st_names = np.array(self.st_names)
+
+    def split_stations(self):
+        # Random selection of locations for train and test
+        np.random.shuffle(self.st_names)
+
+        split = round(len(self.st_names) * 0.2)
+
+        self.st_names_dict = {}
+
+        # st_names_dict['train'] = list(st_names)#[:split*4])
+        # st_names_dict['val'] = list(st_names_test)#[split*4:])
+        # st_names_dict['test'] = list(st_names_test)
+
+        self.st_names_dict['train'] = list(self.st_names[:split*3])    
+        self.st_names_dict['val'] = list(self.st_names[split*3:split*4])
+        self.st_names_dict['test'] = list(self.st_names[split*4:split*5]) 
+
+        if self.include_non_bc_stations:
+            self.st_names_dict['train'] += self.non_bc_stations
+
+        print("%s stations used for training, %s used for validation, and %s used testing" % (len(self.st_names_dict['train']), len(self.st_names_dict['val']), len(self.st_names_dict['test'])))
+
+        self.split_dict = create_cv_held_out_sets(st_names = self.st_names, 
+                                                  non_bc_st_names = self.non_bc_stations,
+                                                  split_by = self.split_by, 
+                                                  include_non_bc_stations = self.include_non_bc_stations)
+
+    def load_split_dict(self, pickle_path = "split_dict.pickle"):
+        self.loaded_dictionary = pickle.load(open(pickle_path, "rb"))
+        self.split_dict = loaded_dictionary.copy()
+    
+    def dump_split_dict(self, dump_path = "split_dict.pickle"):
+        with open(dump_path, 'wb') as handle:
+            pickle.dump(self.split_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def print_split_dict(self):
+        
+        print("# Split dict:")
+        for k,v in self.split_dict.items():
+            print(" " + k)
+            for kk,vv in v.items():
+                print(f"  {kk} = {len(vv)}")
+                print(vv)
+
+    def input_data(self, predictors, predictand, sort_by_quantile=False):
+        
+        self.sort_by_quantile = sort_by_quantile
+        self.data, self.x_mean, self.x_std = create_input_data(self.st, predictors, predictand, self.split_dict, split_by=self.split_by, sort_by_quantile_flag=self.sort_by_quantile)
+
+        self.years_dict = {}
+        self.years_dict['train'] = list(range(1998,2008))
+
+        self.years_list = disjunctive_union_lists(list(self.st['year'].unique()),list(range(1998,2008)))
+        random.Random(5).shuffle(self.years_list)
+
+        self.years_dict['val'] = self.years_list[:10] #list(range(2004,2006))
+        self.years_dict['test'] = self.years_list[10:] #list(range(2006,2008))
+        
+        
+        self.d = len(predictors) # define number of input dimensions
+
+        self.splits = ['train', 'val', 'test']
+
+        # years = range(1998,2005)
+
+        for i in self.splits:
+            
+            if self.split_by=='station':
+                self.data[f'X_{i}'] = (self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
+                self.data[f'Y_{i}'] = self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictand].to_numpy()
+
+            elif self.split_by=='year':
+                self.data[f'X_{i}'] = (self.st[self.st['year'].isin(self.years_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
+                self.data[f'Y_{i}'] = self.st[self.st['year'].isin(self.years_dict[f'{i}'])][predictand].to_numpy()
+                
+        self.train_dataset = create_dataset(data=self.data,split='train',d=self.d)
+        self.val_dataset = create_dataset(data=self.data,split='val',d=self.d)
+        self.test_dataset = create_dataset(data=self.data,split='test',d=self.d)
+            
+        # train_tensor_x = torch.Tensor(data['X_train'][:,:d]) # transform to torch tensor
+        # train_tensor_y = torch.Tensor(data['Y_train'][:,:d])
+        # train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create your dataset
+
+        # val_tensor_x = torch.Tensor(data['X_val'][:,:d]) # transform to torch tensor
+        # val_tensor_y = torch.Tensor(data['Y_val'][:,:d])
+        # val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create your dataset
+
+        # test_tensor_x = torch.Tensor(data['X_test'][:,:d]) # transform to torch tensor
+        # test_tensor_y = torch.Tensor(data['Y_test'][:,:d])
+        # test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create your dataset
+
+        # test2_tensor_x = torch.Tensor(data['X_test2'][:,:d]) # transform to torch tensor
+        # test2_tensor_y = torch.Tensor(data['Y_test2'][:,:d])
+        # test2_dataset = TensorDataset(test2_tensor_x,test2_tensor_y) # create your dataset
 
 def sort_by_quantile(st):
     """Re-arrange dataframe of station data so that model simulations and observations match 
@@ -179,7 +315,6 @@ def dry_days_binomial(df, probability=None, verbose=False):
     
     return np.random.binomial(1,probability,len(df))
 
-
 def disjunctive_union_lists(li1, li2):
     """ Returns the disjunctive union or symmetric difference between to sets, expressed as lists.
     
@@ -322,8 +457,7 @@ def create_cv_held_out_sets(st_names, non_bc_st_names, split_by = 'station', inc
     
     return split_dict
 
-
-def create_station_dataframe(TRAIN_PATH, start, end, add_yesterday=True, basin_filter = None, filter_incomplete_years = True):
+def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday:str=True, basin_filter = None, filter_incomplete_years = True):
 
     st = (import_dataframe(TRAIN_PATH)
         .pipe(drop_df_NaNs, series='Prec')

@@ -1,14 +1,15 @@
 import pandas as pd
+from utils import count_zeros, SMAPE
 
 __all__ = ['seasonal_analysis',
            'seasonal_summaries',
            ]
 
-def seasonal_analysis(st_test):
+def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
 
-    df = st_test.groupby(['Station','season','Year']).sum()[columns].copy()
+    df = st_test.groupby(['Station','season','year']).sum()[columns].copy()
 
-    df_dry_days = st_test.groupby(['Station','season','Year'], as_index=False)[columns]
+    df_dry_days = st_test.groupby(['Station','season','year'], as_index=False)[columns]
     df_dry_days = df_dry_days.agg([count_zeros]).droplevel(level=1, axis=1)
 
     # NUMBER OF DRY DAYS - ABSOLUTE ERROR 
@@ -65,47 +66,47 @@ def seasonal_analysis(st_test):
     if 'median' in add_cols:
         df['smape_mlp_median'] = df.apply(SMAPE, axis=1, args=('median','Prec')) 
 
-    df = pd.merge(df,df_dry_days,on=['Station','season','Year'])
+    df = pd.merge(df,df_dry_days,on=['Station','season','year'])
 
     return df
 
-def seasonal_summaries(df):
+def seasonal_summaries(df, add_cols):
 
     # Totals
-    totals = df.reset_index().melt(id_vars=['Station','season','Year'],
+    totals = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['Prec','wrf_prcp','wrf_bc_prcp','sample'] + add_cols
                          )
     
     # Error
-    e = df.reset_index().melt(id_vars=['Station','season','Year'],
+    e = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['e_wrf_prcp','e_wrf_bc_prcp','e_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
 
     # MAE
-    ae = df.reset_index().melt(id_vars=['Station','season','Year'],
+    ae = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['ae_wrf_prcp','ae_wrf_bc_prcp','ae_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
     
     # SE
-    se = df.reset_index().melt(id_vars=['Station','season','Year'],
+    se = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['se_wrf_prcp','se_wrf_bc_prcp','se_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
 
     # MAE REDUCTION
-    aer = df.reset_index().melt(id_vars=['Station','season','Year'],
+    aer = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['aer_wrf_bc_prcp','aer_mlp'],
                          )
     # ERROR IN DRY DAYS 
-    edd = df.reset_index().melt(id_vars=['Station','season','Year'],
+    edd = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['edd_wrf_prcp','edd_wrf_bc_prcp','edd_mlp'],
                          )
 
     # MSE IMPROVEMENT RATIO                    
-    improvement = df.reset_index().melt(id_vars=['Station','season','Year'],
+    improvement = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['imp_wrf_bc_prcp','imp_mlp'],
                          )
     # SMAPE
-    smape = df.reset_index().melt(id_vars=['Station','season','Year'],
+    smape = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['smape_wrf_prcp','smape_wrf_bc_prcp','smape_mlp'] + [f'smape_mlp_{i}' for i in add_cols]
                      )
         
