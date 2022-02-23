@@ -100,7 +100,7 @@ class DataPreprocessing():
 
     def load_split_dict(self, pickle_path = "split_dict.pickle"):
         self.loaded_dictionary = pickle.load(open(pickle_path, "rb"))
-        self.split_dict = loaded_dictionary.copy()
+        self.split_dict = self.loaded_dictionary.copy()
     
     def dump_split_dict(self, dump_path = "split_dict.pickle"):
         with open(dump_path, 'wb') as handle:
