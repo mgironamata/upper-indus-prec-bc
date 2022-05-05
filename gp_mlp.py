@@ -82,8 +82,8 @@ class UpperIndusGridDataset(Dataset):
         
         wrf_arr = self.wrf.model_precipitation.isel(time=idx).values.flatten()
         
-        #era5_u_arr = self.era5_u.u.isel(time=idx).values.flatten()
-        #era5_v_arr = self.era5_v.v.isel(time=idx).values.flatten()
+        era5_u_arr = self.era5_u.u.isel(time=idx).values.flatten()
+        era5_v_arr = self.era5_v.v.isel(time=idx).values.flatten()
         
         x_arr, y_arr = np.meshgrid(self.srtm.x, self.srtm.y)
         x_arr, y_arr = x_arr.flatten(), y_arr.flatten()
@@ -93,8 +93,8 @@ class UpperIndusGridDataset(Dataset):
         
         #print(srtm_arr.shape, wrf_arr.shape, x_arr.shape, y_arr.shape, doysin_arr.shape, doycos_arr.shape)
         
-        array = np.stack([x_arr, y_arr, srtm_arr, wrf_arr, doysin_arr, doycos_arr
-                         #era5_u_arr, era5_v_arr
+        array = np.stack([x_arr, y_arr, srtm_arr, wrf_arr, doysin_arr, doycos_arr,
+                         era5_u_arr, era5_v_arr
                         ])[:,mask] 
         
         array_norm = (array - self.train_mean) / np.sqrt(self.train_var)
@@ -178,7 +178,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         f_x = f(x)
         kl = q.kl(f_x)
     
-    # Repeat input tensor K times
+    # Repeat input tensor K (n_samples) times
     inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1)
     labels = labels.unsqueeze(-1).repeat(1,1,n_samples)
     
@@ -199,8 +199,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         inputs = torch.cat([q_sample, inputs], dim=1)
 
     # Masking for missing data
-    
-    #inputs = inputs.permute(0,1,3,2)
+    # inputs = inputs.permute(0,1,3,2)
     mask = ~torch.any(inputs.isnan(),dim=3)
     
     k = mask.sum()

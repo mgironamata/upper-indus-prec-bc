@@ -7,24 +7,35 @@ __all__ = ['seasonal_analysis',
 
 def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
 
-    df = st_test.groupby(['Station','season','year']).sum()[columns].copy()
+    df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_cols + add_cols)].copy()
 
-    df_dry_days = st_test.groupby(['Station','season','year'], as_index=False)[columns]
+    df_dry_days = st_test.groupby(['Station','season','year'], as_index=False)[(columns + sample_cols + add_cols)]
     df_dry_days = df_dry_days.agg([count_zeros]).droplevel(level=1, axis=1)
 
+    list_of_edd_cols = []
     # NUMBER OF DRY DAYS - ABSOLUTE ERROR 
     for i in range(n_samples):
         df_dry_days[f'edd_mlp_{i}'] = (df_dry_days[f'sample_{i}'] - df_dry_days['Prec'])
+        list_of_edd_cols.append(f'edd_mlp_{i}')
 
     df_dry_days['edd_mlp'] = abs(df_dry_days[[f'edd_mlp_{i}' for i in range(n_samples)]].mean(axis=1))
-    df_dry_days['edd_wrf_prcp'] = abs(df_dry_days['wrf_prcp'] - df_dry_days['Prec'])
-    df_dry_days['edd_wrf_bc_prcp'] = abs(df_dry_days['wrf_bc_prcp'] - df_dry_days['Prec'])
+    list_of_edd_cols.append('edd_mlp')
+    
+    for c in columns:
+        df_dry_days[f'edd_{c}'] = abs(df_dry_days[c] - df_dry_days['Prec'])
+        list_of_edd_cols.append(f'edd_{c}')
+        
+#     df_dry_days['edd_wrf_prcp'] = abs(df_dry_days['wrf_prcp'] - df_dry_days['Prec'])
+#     df_dry_days['edd_wrf_bc_prcp'] = abs(df_dry_days['wrf_bc_prcp'] - df_dry_days['Prec'])
 
-    df_dry_days = df_dry_days[['edd_wrf_prcp','edd_wrf_bc_prcp','edd_mlp']]
+    df_dry_days = df_dry_days[list_of_edd_cols]
 
     # PRECIPITATION - SQUARED ERROR 
-    df['se_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])**2
-    df['se_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])**2
+    for c in columns:
+        df[f'se_{c}'] = (df[c] - df['Prec'])**2
+        
+#     df['se_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])**2
+#     df['se_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])**2
 
     df['sample'] = df[sample_cols].mean(axis=1)
 
@@ -35,11 +46,15 @@ def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
     df['se_mlp'] = df[[f'se_mlp_{i}' for i in range(n_samples)]].mean(axis=1)
 
     # PRECIPITATION - ERROR & ABSOLUTE ERROR
-    df['e_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])
-    df['e_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])  
+    for c in columns:
+        df[f'e_{c}'] = (df[c] - df['Prec'])
+        df[f'ae_{c}'] = abs(df[c] - df['Prec'])
+    
+#     df['e_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])
+#     df['e_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])  
 
-    df['ae_wrf_prcp'] = abs(df['wrf_prcp'] - df['Prec'])
-    df['ae_wrf_bc_prcp'] = abs(df['wrf_bc_prcp'] - df['Prec'])
+#     df['ae_wrf_prcp'] = abs(df['wrf_prcp'] - df['Prec'])
+#     df['ae_wrf_bc_prcp'] = abs(df['wrf_bc_prcp'] - df['Prec'])
 
     for i in range(n_samples):
         df[f'e_mlp_{i}'] = (df[f'sample_{i}'] - df['Prec'])
@@ -49,16 +64,27 @@ def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
     df['ae_mlp'] = df[[f'ae_mlp_{i}' for i in range(n_samples)]].mean(axis=1)
 
     # PRECIPITATION - ABSOLUTE ERROR REDUCTION
+    for c in columns:
+        df[f'aer_{c}'] = df['ae_wrf_prcp'] - df[f'ae_{c}'] 
+    
     df['aer_mlp'] = df['ae_wrf_prcp'] - df['ae_mlp']
-    df['aer_wrf_bc_prcp'] = df['ae_wrf_prcp'] - df['ae_wrf_bc_prcp']
+    #df['aer_wrf_bc_prcp'] = df['ae_wrf_prcp'] - df['ae_wrf_bc_prcp']
 
     # PRECIPITATION - MSE IMPROVEMENT RATIO
-    df['imp_wrf_bc_prcp'] = 1 - df['se_wrf_bc_prcp']/(df['se_wrf_prcp'])
+    for c in columns:
+        df[f'imp_{c}'] = 1 - df[f'se_{c}']/(df['se_wrf_prcp'])
+    
+    #df['imp_wrf_bc_prcp'] = 1 - df['se_wrf_bc_prcp']/(df['se_wrf_prcp'])
+    
     df['imp_mlp'] = 1 - df['se_mlp']/(df['se_wrf_prcp'])
 
     # PRECIPITATION - SMAPE
-    df['smape_wrf_prcp'] = df.apply(SMAPE, axis=1, args=('wrf_prcp','Prec')) 
-    df['smape_wrf_bc_prcp'] = df.apply(SMAPE, axis=1, args=('wrf_bc_prcp','Prec')) 
+    for c in columns:
+        df[f'smape_{c}'] = df.apply(SMAPE, axis=1, args=(c, 'Prec'))
+    
+#     df['smape_wrf_prcp'] = df.apply(SMAPE, axis=1, args=('wrf_prcp','Prec')) 
+#     df['smape_wrf_bc_prcp'] = df.apply(SMAPE, axis=1, args=('wrf_bc_prcp','Prec')) 
+    
     df['smape_mlp'] = df.apply(SMAPE, axis=1, args=('sample','Prec')) 
 
     if 'mean' in add_cols:
@@ -70,44 +96,53 @@ def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
 
     return df
 
-def seasonal_summaries(df, add_cols):
-
+def seasonal_summaries(df, add_cols, cols):
+    
     # Totals
+    
+    value_vars = cols + ['sample']
     totals = df.reset_index().melt(id_vars=['Station','season','year'],
                           value_vars=['Prec','wrf_prcp','wrf_bc_prcp','sample'] + add_cols
                          )
     
     # Error
+    value_vars = [f'e_{c}' for c in cols] + ['e_mlp']
     e = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['e_wrf_prcp','e_wrf_bc_prcp','e_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
+                          value_vars=value_vars #,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
 
     # MAE
+    value_vars = [f'ae_{c}' for c in cols] + ['ae_mlp']
     ae = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['ae_wrf_prcp','ae_wrf_bc_prcp','ae_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
+                          value_vars=value_vars #,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
     
     # SE
+    value_vars = [f'se_{c}' for c in cols] + ['se_mlp']
     se = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['se_wrf_prcp','se_wrf_bc_prcp','se_mlp']#,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
+                          value_vars=value_vars #,'imp_bc_wrf','imp_mlp','se_wrf','se_bc_wrf','se_mlp','edd_mlp','edd_bc'],
                          )
 
     # MAE REDUCTION
+    value_vars = [f'aer_{c}' for c in cols] + ['aer_mlp']
     aer = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['aer_wrf_bc_prcp','aer_mlp'],
+                          value_vars=value_vars,
                          )
     # ERROR IN DRY DAYS 
+    value_vars = [f'edd_{c}' for c in cols] + ['edd_mlp']
     edd = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['edd_wrf_prcp','edd_wrf_bc_prcp','edd_mlp'],
+                          value_vars=value_vars,
                          )
 
-    # MSE IMPROVEMENT RATIO                    
+    # MSE IMPROVEMENT RATIO   
+    value_vars = [f'imp_{c}' for c in cols] + ['imp_mlp']
     improvement = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['imp_wrf_bc_prcp','imp_mlp'],
+                          value_vars=value_vars,
                          )
     # SMAPE
+    value_vars = [f'smape_{c}' for c in cols] + ['smape_mlp']
     smape = df.reset_index().melt(id_vars=['Station','season','year'],
-                          value_vars=['smape_wrf_prcp','smape_wrf_bc_prcp','smape_mlp'] + [f'smape_mlp_{i}' for i in add_cols]
+                          value_vars=value_vars + [f'smape_mlp_{i}' for i in add_cols]
                      )
         
     d = {}
