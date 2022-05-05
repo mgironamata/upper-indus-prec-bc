@@ -875,7 +875,7 @@ def SMAPE(df, sim, obs):
 def add_to_dict(xs,d):
     for x in xs:
         print(x)
-        key = f'{x=}'.split('=')[0]
+        key = f'{x}'.split('=')[0]
         d[key] = x
     return d
 
