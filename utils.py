@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.preprocessing import scale
 import torch
 import torch.nn as nn
 import torch.nn.functional as Fv
@@ -9,7 +10,6 @@ import scipy.stats as stats
 import os
 
 from models import *
-from utils import *
 from experiment import *
 from runmanager import *
 
@@ -20,7 +20,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 import pdb
 
-__all__ =  ['init_sequential_weights',
+__all__ =  [
             'gaussian_logpdf',
             'gamma_logpdf',
             'ggmm_logpdf',
@@ -49,24 +49,17 @@ __all__ =  ['init_sequential_weights',
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 """Device to perform computations on."""
 
-def init_sequential_weights(model, bias=0.0):
-    """Initialize the weights of a nn.Sequential model with Glorot
-    initialization.
-
-    Args:
-        model (:class:`nn.Sequential`): Container for model.
-        bias (float, optional): Value for initializing bias terms. Defaults
-            to `0.0`.
-
-    Returns:
-        (nn.Sequential): model with initialized weights
-    """
-    for layer in model:
-        if hasattr(layer, 'weight'):
-            nn.init.xavier_normal_(layer.weight, gain=1)
-        if hasattr(layer, 'bias'):
-            nn.init.constant_(layer.bias, bias)
-    return model
+def _reduce(logp, reduction):
+    if not reduction:
+        return logp
+    elif reduction == 'sum':
+        return torch.sum(logp)
+    elif reduction == 'mean':
+        return torch.mean(logp)
+    elif reduction == 'batched_mean':
+        return torch.mean(torch.sum(logp, 1))
+    else:
+        raise RuntimeError(f'Unknown reduction "{reduction}".')
 
 def gaussian_logpdf(obs, mu, sigma, reduction='mean'):
     """Gamma mixture model log-density.
@@ -86,16 +79,7 @@ def gaussian_logpdf(obs, mu, sigma, reduction='mean'):
 
     logp = Normal(loc=mu, scale=sigma).log_prob(obs)
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
 
 def gamma_logpdf(obs, alpha, beta, reduction='mean'):
     """Gamma mixture model log-density.
@@ -119,16 +103,7 @@ def gamma_logpdf(obs, alpha, beta, reduction='mean'):
 
     logp = Gamma(concentration=alpha, rate=beta).log_prob(obs)
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
 
 def ggmm_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     """Benroulli-Gamma-Gamma mexture model log-density.
@@ -163,16 +138,7 @@ def ggmm_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
 
     logp = gmm.log_prob(obs)
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
 
 def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
     """Benroulli-Gamma mixture model log-density.
@@ -200,16 +166,7 @@ def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + Gamma(concentration=alpha[g_mask], rate=beta[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
      
 def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     """Benroulli-Gamma-Gamma mexture model log-density.
@@ -248,16 +205,7 @@ def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     logp[g_mask] = torch.log(1-pi[g_mask]) + gmm.log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
 
 def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean'):
     """Benroulli-Gamma-Gamma mixture model log-density.
@@ -287,16 +235,59 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean')
     logp[g2_mask] = torch.log((1-pi[g2_mask])) + torch.log((1-q[g2_mask])) + Gamma(concentration=alpha2[g2_mask], rate=beta2[g2_mask]).log_prob(obs[g2_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
+    return _reduce(logp, reduction)
+
+def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
+    """Benroulli-Gaussian mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        pi (torch.Tensor): 
+        mu (torch.Tensor): 
+        sigma (torch.Tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    logp = torch.zeros(obs.shape)
+    
+    b_mask = obs == 0
+    g_mask = obs != 0
+
+    logp[g_mask] = torch.log((1-pi[g_mask])) + Normal(loc=mu[g_mask], scale=sigma[g_mask]).log_prob(obs[g_mask])
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    return _reduce(logp, reduction)
+
+def bernoulli_loggaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
+    """Benroulli-Gaussian mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        pi (torch.Tensor): 
+        mu (torch.Tensor): 
+        sigma (torch.Tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    logp = torch.zeros(obs.shape)
+    
+    b_mask = obs == 0
+    g_mask = obs != 0
+
+    logp[g_mask] = torch.log((1-pi[g_mask])) + Normal(loc=mu[g_mask], scale=sigma[g_mask]).log_prob(torch.log(obs[g_mask]))
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    return _reduce(logp, reduction)
 
 def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
     """Runs training for one epoch.
@@ -333,7 +324,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
             
             for param in optimizer.param_groups[0]['params']:
                 # Bit of regularisation
-                nn.utils.clip_grad_value_(param, 10)
+                nn.utils.clip_grad_value_(param, 1)
 
             optimizer.step()
         
@@ -413,6 +404,13 @@ def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     elif model.likelihood == 'b2sgmm':
         loss = -b2sgmm_logpdf(labels, pi=outputs[:,0], alpha1=outputs[:,1], alpha2=outputs[:,2], 
                              beta1=outputs[:,3], beta2=outputs[:,4], q=outputs[:,5], t=outputs[:,6], reduction=reduction)
+    
+    elif model.likelihood == 'bernoulli_gaussian':
+        loss = -bernoulli_gaussian_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
+    
+    elif model.likelihood == 'bernoulli_loggaussian':
+        loss = -bernoulli_loggaussian_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
+
     return loss
 
 def gmm_fn(alpha1, alpha2, beta1, beta2, q):
@@ -501,6 +499,30 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return torch.quantile(dist.sample([sample_size]), quantile).numpy()
         else:
             return 0
+    
+    elif likelihood_fn == 'bernoulli_gaussian':
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        perc = df[series] 
+
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.norm.ppf(quantile, loc=mu, scale=sigma)
+        else:
+            return 0
+    
+    elif likelihood_fn == 'bernoulli_loggaussian':
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        perc = df[series] 
+
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
+        else:
+            return 0
 
 def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
     if likelihood_fn == 'gamma':
@@ -547,11 +569,33 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         else:
             return 0
 
+    elif likelihood_fn == 'bernoulli_gaussian':
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.norm.ppf(quantile, loc=mu, scale=sigma)
+        else:
+            return 0
+        
+    elif likelihood_fn == 'bernoulli_loggaussian':
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
+        else:
+            return 0
+
 def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None, x_std=None,
-                     confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False):
+                     confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, threshold=None):
     
     if sequential_samples:
-        outputs = make_sequential_predictions(model, test_dataset, x_mean, x_std)
+        outputs = make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=threshold)
     else:
         outputs = make_predictions(model, test_dataset)
     
@@ -609,8 +653,8 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
         new_df['mean'] = new_df['occurrence']*new_df['alpha']/new_df['beta']
 
-        new_df[f'perc_median'] = 0.5
-        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+        # new_df[f'perc_median'] = 0.5
+        # new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
 
     elif model.likelihood == 'b2gmm':
         new_df['pi'] = outputs[:,0]
@@ -630,6 +674,25 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         
         new_df[f'perc_median'] = 0.5
         new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+
+    elif model.likelihood == 'bernoulli_gaussian':
+        new_df['pi'] = outputs[:,0]
+        new_df['mu'] = outputs[:,1]
+        new_df['sigma'] = outputs[:,2] 
+
+        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+        new_df['mean'] = new_df['occurrence']*new_df['mu']
+    
+    elif model.likelihood == 'bernoulli_loggaussian':
+        new_df['pi'] = outputs[:,0]
+        new_df['mu'] = outputs[:,1]
+        new_df['sigma'] = outputs[:,2] 
+
+        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+        # new_df['mean'] = new_df['occurrence']*new_df['mu']
+
+        # new_df[f'perc_median'] = 0.5
+        # new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
 
     elif model.likelihood == 'b2sgmm':
 
@@ -767,6 +830,32 @@ def sample_mc(model, theta_dict):
             return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
         else:
             return 0
+    
+    elif model.likelihood == 'bernoulli_gaussian':
+        pi = theta_dict['pi']
+        mu = theta_dict['mu']
+        sigma = theta_dict['sigma']
+        
+        perc = np.random.uniform(0,1)
+        
+        if perc > pi:
+            quantile = (perc-pi)/(1-pi)
+            return stats.norm.ppf(quantile, loc=mu, scale=sigma)
+        else:
+            return 0
+    
+    elif model.likelihood == 'bernoulli_loggaussian':
+        pi = theta_dict['pi']
+        mu = theta_dict['mu']
+        sigma = theta_dict['sigma']
+        
+        perc = np.random.uniform(0,1)
+        
+        if perc > pi:
+            quantile = (perc-pi)/(1-pi)
+            return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
+        else:
+            return 0
 
 def truncate_sample(x, threshold):
     if x<threshold:
@@ -804,7 +893,17 @@ def make_predictions(model, test_dataset):
     
     return test_outputs
 
-def make_sequential_predictions(model, test_dataset, x_mean, x_std):
+def _get_theta_params(likelihood):
+    if likelihood == 'bgmm':
+        return ['pi','alpha','beta']
+    elif likelihood == 'bernoulli_gaussian':
+        return ['pi','mu','sigma']
+    elif likelihood == 'bernoulli_loggaussian':
+        return ['pi','mu','sigma']
+    elif likelihood == 'gaussian':
+        return ['mu','sigma']
+
+def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=None):
 
     model.eval()
 
@@ -817,18 +916,22 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std):
             else:
                 prev_prediction = torch.tensor(norm_sample)
                 
-            test_input = torch.cat([test_dataset.tensors[0][index,:-1],
+            test_input = torch.cat([test_dataset.tensors[0][index,:-1], 
                                     prev_prediction.unsqueeze(0)])
             
             test_output = model(test_input.unsqueeze(0).float())
+
+            # if test_output[0][0] == 0:
+            #     print(test_input)
             
-            theta_params = ['pi','alpha','beta']
+            theta_params = _get_theta_params(likelihood=model.likelihood)
             
             theta_dict = {key:test_output[0,i] for i, key in enumerate(theta_params)}
             
             sample = sample_mc(model, theta_dict)
             
-    #         sample = truncate_sample(sample, threshold=350)
+            if threshold is not None:
+                sample = truncate_sample(sample, threshold=threshold)
             
             norm_sample = (sample - x_mean[-1])/x_std[-1]
             
@@ -837,10 +940,10 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std):
                                 torch.tensor(sample).unsqueeze(0)]).unsqueeze(0)
             else:
                 concat_test_output = torch.cat([test_output.squeeze(),
-                            torch.tensor(sample).unsqueeze(0)]).unsqueeze(0)
+                                torch.tensor(sample).unsqueeze(0)]).unsqueeze(0)
                             
                 concat_test_outputs = torch.cat([concat_test_outputs,
-                                        concat_test_output],dim=0)
+                                                 concat_test_output],dim=0)
             
             print(index) if index%10000==0 else None
 
@@ -848,7 +951,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std):
 
     return concat_test_outputs
 
-def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='station'):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None):
 
     m = RunManager()
     predictions={}
@@ -861,19 +964,19 @@ def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='stat
                 hidden_channels=run.hidden_channels, 
                 likelihood_fn=run.likelihood_fn,
                 dropout_rate=run.dropout_rate,
-                linear_model=True,
+                linear_model=run.linear_model,
                 )
         
-        train_tensor_x = torch.Tensor(data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
-        train_tensor_y = torch.Tensor(data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_tensor_x = torch.Tensor(data.data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_tensor_y = torch.Tensor(data.data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
         train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
 
-        val_tensor_x = torch.Tensor(data[f'X_val_{run.k}'][:,:d]) # transform to torch tensor
-        val_tensor_y = torch.Tensor(data[f'Y_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_tensor_x = torch.Tensor(data.data[f'X_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_tensor_y = torch.Tensor(data.data[f'Y_val_{run.k}'][:,:d]) # transform to torch tensor
         val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
         
-        test_tensor_x = torch.Tensor(data[f'X_test_{run.k}'][:,:d]) # transform to torch tensor
-        test_tensor_y = torch.Tensor(data[f'Y_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_tensor_x = torch.Tensor(data.data[f'X_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_tensor_y = torch.Tensor(data.data[f'Y_test_{run.k}'][:,:d]) # transform to torch tensor
         test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
         
         train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
@@ -920,28 +1023,39 @@ def multirun(data, st, predictors, params, d, epochs, split_dict, split_by='stat
         load_best = True
         if load_best:
             network.load_state_dict(torch.load(os.path.join(wd.root,'model_best.pth.tar')))
-            
-        with torch.no_grad():
-            outputs = network(test_tensor_x)
-            # outputs = network(val_tensor_x)
+        
+        # if sequential_predictions:
+        #     outputs = make_sequential_predictions(model=network, test_dataset=test_dataset, x_mean=data.x_mean, x_std=data.x_std)
+        # else:
+        #     outputs = make_predictions(model=network, test_dataset=test_dataset)
+
+        # with torch.no_grad():
+        #     outputs = network(test_tensor_x)
+        #     # outputs = network(val_tensor_x)
         
         if split_by == 'year':
-            input_df = st[(st['year'].isin(split_dict[f'k{run.k}']['test']))] 
+            input_df = data.st[(data.st['year'].isin(data.split_dict[f'k{run.k}']['test']))] 
             input_st_names = None
         elif split_by == 'station':
-            input_df = st
-            input_st_names = split_dict[f'k{run.k}']['test']
-            
+            input_df = data.st
+            input_st_names = data.split_dict[f'k{run.k}']['test']
+
         st_test = build_results_df(df=input_df,
-                                outputs=outputs, 
+                                test_dataset=test_dataset,
                                 st_names_test=input_st_names,                 
                                 model=network,
+                                x_mean=data.x_mean,
+                                x_std=data.x_std,
+                                confidence_intervals=True,
                                 draw_samples=True,
                                 n_samples=10,
-                                confidence_intervals= True,
+                                sequential_samples = sequential_samples, 
+                                threshold=sample_threshold
                                 )
         
-        key = f'{run.likelihood_fn}_{run.hidden_channels}_{run.linear_model}'
+        linear_flag = 'L' if run.linear_model else 'NL'
+        
+        key = f'{run.likelihood_fn}_{run.hidden_channels}_{linear_flag}_B={run.batch_size}_D={run.dropout_rate}'
         
         if not(key in predictions.keys()):
             predictions[key] = {} 
