@@ -3,12 +3,30 @@ import torch.nn as nn
 import torch.nn.functional as F 
 from torch.distributions.gamma import Gamma
 
-from utils import init_sequential_weights
-
-__all__ = ['MLP',
+__all__ = ['init_sequential_weights',
+           'MLP',
            'SimpleCNN',
            'GeoStatCNN',
           ]
+
+def init_sequential_weights(model, bias=0.0):
+    """Initialize the weights of a nn.Sequential model with Glorot
+    initialization.
+
+    Args:
+        model (:class:`nn.Sequential`): Container for model.
+        bias (float, optional): Value for initializing bias terms. Defaults
+            to `0.0`.
+
+    Returns:
+        (nn.Sequential): model with initialized weights
+    """
+    for layer in model:
+        if hasattr(layer, 'weight'):
+            nn.init.xavier_normal_(layer.weight, gain=1)
+        if hasattr(layer, 'bias'):
+            nn.init.constant_(layer.bias, bias)
+    return model
 
 class MLP(nn.Module):
     """Multilayer perceptron
@@ -51,6 +69,12 @@ class MLP(nn.Module):
             self.out_channels = 7
         elif self.likelihood == 'btgmm':
             self.out_channels = 4
+        elif self.likelihood == 'bernoulli_gaussian':
+            self.out_channels = 3
+        elif self.likelihood == 'bernoulli_loggaussian':
+            self.out_channels = 3
+        elif self.likelihood == 'bernoulli_gumbel':
+            self.out_channels = 3
  
         #self.f = self.build_weight_model()
         self.exp = torch.exp
@@ -139,6 +163,21 @@ class MLP(nn.Module):
             x[:,0] = self.sigmoid(x[:,0]) # pi
             x[:,1:-1] = self.exp(x[:,1:]) # alpha, beta
             x[:-1] = self.exp(x[:-1]) # threshold
+            return x
+        elif self.likelihood=='bernoulli_gaussian':
+            x[:,0] = self.sigmoid(x[:,0]) # pi
+            x[:,2] = self.exp(x[:,2]) # sigma
+            return x
+        elif self.likelihood=='bernoulli_loggaussian':
+            x[:,0] = self.sigmoid(x[:,0]) # pi
+            x[:,2] = self.exp(x[:,2]) # sigma
+            return x
+        elif self.likelihood=='bernoulli_gumbel':
+            x[:,0] = self.sigmoid(x[:,0]) # pi
+            x[:,2] = self.exp(x[:,2]) # sigma
+            return x
+
+
 
 class SimpleCNN(nn.Module):
 
