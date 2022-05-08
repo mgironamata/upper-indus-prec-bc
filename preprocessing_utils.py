@@ -59,22 +59,23 @@ class DataPreprocessing():
         # Create station dataframe
         self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = True)
 
-        # List bias-corrected and non-bias-corrected stations
-        self.bc_stations = list_bc_stations(self.st)
-        self.non_bc_stations = disjunctive_union_lists(self.st['Station'].unique(), self.bc_stations)
+    def split_stations(self):
 
-        # Set of stations to be split into training, validation and test held out sets.
         if self.split_bias_corrected_only:
-            self.st_names = list(set(self.bc_stations) & set(self.st['Station'].unique()))
-        else:
-            self.st_names = st['Station'][self.st['set']=='train'].unique()
+            
+            #  List bias-corrected and non-bias-corrected stations
+            self.bc_stations = list_bc_stations(self.st)
+            self.non_bc_stations = disjunctive_union_lists(self.st['Station'].unique(), self.bc_stations)
 
-        # st_names_test = st['Station'][st['set']=='test'].unique()
+            # Set of stations to be split into training, validation and test held out sets.
+            self.st_names = list(set(self.bc_stations) & set(self.st['Station'].unique()))
+
+        else:
+            self.st_names = self.st['Station'][self.st['set']=='train'].unique()
+
         self.st_names = np.array(self.st_names)
 
-    def split_stations(self):
-        # Random selection of locations for train and test
-        np.random.shuffle(self.st_names)
+        np.random.shuffle(self.st_names) # shuffle stations 
 
         split = round(len(self.st_names) * 0.2)
 
@@ -88,10 +89,10 @@ class DataPreprocessing():
         self.st_names_dict['val'] = list(self.st_names[split*3:split*4])
         self.st_names_dict['test'] = list(self.st_names[split*4:split*5]) 
 
-        if self.include_non_bc_stations:
+        if (self.split_bias_corrected_only) & (self.include_non_bc_stations):
             self.st_names_dict['train'] += self.non_bc_stations
 
-        print("%s stations used for training, %s used for validation, and %s used testing" % (len(self.st_names_dict['train']), len(self.st_names_dict['val']), len(self.st_names_dict['test'])))
+        # print("%s stations used for training, %s used for validation, and %s used testing" % (len(self.st_names_dict['train']), len(self.st_names_dict['val']), len(self.st_names_dict['test'])))
 
         self.split_dict = create_cv_held_out_sets(st_names = self.st_names, 
                                                   non_bc_st_names = self.non_bc_stations,
@@ -166,7 +167,7 @@ class DataPreprocessing():
         # test2_tensor_y = torch.Tensor(data['Y_test2'][:,:d])
         # test2_dataset = TensorDataset(test2_tensor_x,test2_tensor_y) # create your dataset
 
-def sort_by_quantile(st):
+def sort_by_quantile(st, sort_by = 'wrf_prcp'):
     """Re-arrange dataframe of station data so that model simulations and observations match 
     based on quantiles, for each station separately
     
@@ -180,7 +181,7 @@ def sort_by_quantile(st):
     list_stations = st['Station'].unique()
     
     for i, s in enumerate(list_stations):
-        QM_data[s] = st[st['Station']==s].sort_values(by='wrf_prcp')
+        QM_data[s] = st[st['Station']==s].sort_values(by=sort_by)
         QM_data[s]['Prec'] = QM_data[s]['Prec'].sort_values().values
 
         if i == 0:
@@ -266,8 +267,8 @@ def FilterByList(df,series,value_list):
 def filter_by_series(df, series, value):
     return df[df[series]==value]
 
-def list_bc_stations(df):
-    df['BC_diff'] = df['wrf_prcp'] - df['wrf_bc_prcp']
+def list_bc_stations(df, raw_field = 'wrf_prcp', bc_field = 'wrf_bc_prcp'):
+    df['BC_diff'] = df[raw_field] - df[bc_field]
     aux = df.groupby('Station').sum()
     aux.reset_index(inplace=True)
     return aux['Station'][aux['BC_diff']!=0].unique()
@@ -457,7 +458,7 @@ def create_cv_held_out_sets(st_names, non_bc_st_names, split_by = 'station', inc
     
     return split_dict
 
-def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday:str=True, basin_filter = None, filter_incomplete_years = True):
+def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday: str = True, basin_filter = None, filter_incomplete_years = True):
 
     st = (import_dataframe(TRAIN_PATH)
         .pipe(drop_df_NaNs, series='Prec')
