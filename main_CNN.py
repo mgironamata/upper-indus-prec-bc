@@ -23,10 +23,12 @@ torch.autograd.detect_anomaly = True
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+# Validation stations
 val_stations = ['Pandoh', 'Banjar', 'Bhuntar', 'Larji', 'Sainj', 'Janjehl',
                 'Hamirpur', 'Nadaun', 'Sujanpur', 'Dehra', 'Kangra', 'Palampur',
                 'Sadar-Mandi', 'Jogindernagar', 'Sarkaghat']
 
+# Training stations
 train_stations = ['Sundernagar', 'BanjarIMD', 'Bharmaur', 'Churah', 'Kalatop',
                     'Salooni', 'Rohru', 'Jubbal', 'Kothai', 'Nahan', 'Paonta Sahib',
                     'Rakuna', 'Pachhad', 'Dadahu', 'Dhaula Kuan', 'Kandaghat', 'Suni',
