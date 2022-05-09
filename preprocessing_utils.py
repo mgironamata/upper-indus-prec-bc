@@ -71,7 +71,8 @@ class DataPreprocessing():
             self.st_names = list(set(self.bc_stations) & set(self.st['Station'].unique()))
 
         else:
-            self.st_names = self.st['Station'][self.st['set']=='train'].unique()
+            # self.st_names = self.st['Station'][self.st['set']=='train'].unique()
+            self.st_names = self.st['Station'].unique()
 
         self.st_names = np.array(self.st_names)
 
