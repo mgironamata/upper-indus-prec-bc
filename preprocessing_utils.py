@@ -72,6 +72,8 @@ class DataPreprocessing():
 
         else:
             # self.st_names = self.st['Station'][self.st['set']=='train'].unique()
+            self.bc_stations = self.st['Station'].unique()
+            self.non_bc_stations = []
             self.st_names = self.st['Station'].unique()
 
         self.st_names = np.array(self.st_names)
@@ -429,7 +431,7 @@ def add_yesterday_observation(st):
     st.dropna(inplace=True)
     return st
 
-def create_cv_held_out_sets(st_names, non_bc_st_names, split_by = 'station', include_non_bc_stations = True):
+def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station', include_non_bc_stations = True):
 
     if split_by == 'station':
         
