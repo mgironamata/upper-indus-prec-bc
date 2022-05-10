@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as Fv
 from torch.distributions.gamma import Gamma
+from torch.distributions.gumbel import Gumbel
 from torch.distributions.normal import Normal
 import scipy.stats as stats 
 
@@ -289,6 +290,32 @@ def bernoulli_loggaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
 
     return _reduce(logp, reduction)
 
+def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
+    """Benroulli-Gaussian mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        pi (torch.Tensor): 
+        mu (torch.Tensor): 
+        beta (torch.Tensor):
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    logp = torch.zeros(obs.shape)
+    
+    b_mask = obs == 0
+    g_mask = obs != 0
+
+    logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=mu[g_mask], scale=beta[g_mask]).log_prob(torch.log(obs[g_mask]))
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    return _reduce(logp, reduction)
+
 def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
     """Runs training for one epoch.
 
@@ -410,6 +437,9 @@ def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     
     elif model.likelihood == 'bernoulli_loggaussian':
         loss = -bernoulli_loggaussian_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
+
+    elif model.likelihood == 'bernoulli_gumbel':
+        loss = -bernoulli_gumbel_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
 
     return loss
 
