@@ -314,7 +314,7 @@ def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
     b_mask = obs == 0
     g_mask = obs != 0
 
-    logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=mu[g_mask], scale=beta[g_mask]).log_prob(torch.log(obs[g_mask]))
+    logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=mu[g_mask], scale=beta[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
     return _reduce(logp, reduction)
@@ -339,7 +339,7 @@ def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
     b_mask = obs == 0
     g_mask = obs != 0
 
-    logp[g_mask] = torch.log((1-pi[g_mask])) + HalfNormal(scale=sigma[g_mask]).log_prob(torch.log(obs[g_mask]))
+    logp[g_mask] = torch.log((1-pi[g_mask])) + HalfNormal(scale=sigma[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
     return _reduce(logp, reduction)
