@@ -562,7 +562,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
 
         if perc > pi:
             quantile = (perc - pi)/(1 - pi)
-            return stats.gumbel.ppf(quantile, loc=sigma, scale=beta)
+            return stats.gumbel_r.ppf(quantile, loc=sigma, scale=beta)
         else:
             return 0
 
@@ -640,7 +640,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         
         if perc > pi:
             quantile = (perc - pi)/(1 - pi)
-            return stats.gumbel.ppf(quantile, loc=mu, scale=beta)
+            return stats.gumbel_r.ppf(quantile, loc=mu, scale=beta)
         else:
             return 0
 
