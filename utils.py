@@ -439,7 +439,7 @@ def loss_fn(outputs, labels, inputs, model, reduction='mean'):
         loss = -bernoulli_loggaussian_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
 
     elif model.likelihood == 'bernoulli_gumbel':
-        loss = -bernoulli_gumbel_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], sigma=outputs[:,2], reduction='mean')
+        loss = -bernoulli_gumbel_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], beta=outputs[:,2], reduction='mean')
 
     return loss
 
