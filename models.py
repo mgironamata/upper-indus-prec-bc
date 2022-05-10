@@ -75,7 +75,9 @@ class MLP(nn.Module):
             self.out_channels = 3
         elif self.likelihood == 'bernoulli_gumbel':
             self.out_channels = 3
- 
+        elif self.likelihood == 'bernoulli_halfnormal':
+            self.out_channels = 2
+
         #self.f = self.build_weight_model()
         self.exp = torch.exp
         self.sigmoid = torch.sigmoid
@@ -176,7 +178,10 @@ class MLP(nn.Module):
             x[:,0] = self.sigmoid(x[:,0]) # pi
             x[:,2] = self.exp(x[:,2]) # sigma
             return x
-
+        elif self.likelihood=='bernoulli_gumbel':
+            x[:,0] = self.sigmoid(x[:,0]) # pi
+            x[:,1] = self.exp(x[:,1]) # sigma
+            return x
 
 
 class SimpleCNN(nn.Module):

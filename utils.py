@@ -3,9 +3,12 @@ from sklearn.preprocessing import scale
 import torch
 import torch.nn as nn
 import torch.nn.functional as Fv
+
 from torch.distributions.gamma import Gamma
 from torch.distributions.gumbel import Gumbel
 from torch.distributions.normal import Normal
+from torch.distributions.half_normal import HalfNormal
+
 import scipy.stats as stats 
 
 import os
@@ -291,7 +294,7 @@ def bernoulli_loggaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
     return _reduce(logp, reduction)
 
 def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
-    """Benroulli-Gaussian mixture model log-density.
+    """Benroulli-Gumbel mixture model log-density.
 
     Args:
         obs (torch.Tensor): Inputs.
@@ -312,6 +315,31 @@ def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
     g_mask = obs != 0
 
     logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=mu[g_mask], scale=beta[g_mask]).log_prob(torch.log(obs[g_mask]))
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    return _reduce(logp, reduction)
+
+def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
+    """Benroulli-HalfNormal mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        pi (torch.Tensor): 
+        sigma (torch.Tensor): 
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    logp = torch.zeros(obs.shape)
+    
+    b_mask = obs == 0
+    g_mask = obs != 0
+
+    logp[g_mask] = torch.log((1-pi[g_mask])) + HalfNormal(scale=sigma[g_mask]).log_prob(torch.log(obs[g_mask]))
     logp[b_mask] = torch.log(pi[b_mask])
 
     return _reduce(logp, reduction)
@@ -441,6 +469,9 @@ def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     elif model.likelihood == 'bernoulli_gumbel':
         loss = -bernoulli_gumbel_logpdf(labels, pi=outputs[:,0], mu=outputs[:,1], beta=outputs[:,2], reduction='mean')
 
+    elif model.likelihood == 'bernoulli_halfnormal':
+        loss = -bernoulli_halfnormal_logpdf(labels, pi=outputs[:,0], sigma=outputs[:,1], reduction='mean')
+
     return loss
 
 def gmm_fn(alpha1, alpha2, beta1, beta2, q):
@@ -566,7 +597,19 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
         else:
             return 0
 
+    elif likelihood_fn == 'bernoulli_halfnormal':
+        pi = df['pi']
+        sigma = df['sigma']
+        perc = df[series] 
+
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.halfnorm.ppf(quantile, scale=sigma)
+        else:
+            return 0
+
 def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
+
     if likelihood_fn == 'gamma':
         alpha = df['alpha']
         beta = df['beta']
@@ -643,6 +686,17 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return stats.gumbel_r.ppf(quantile, loc=mu, scale=beta)
         else:
             return 0
+
+    elif likelihood_fn == 'bernoulli_halfnormal':
+        pi = df['pi']
+        sigma = df['sigma']
+        
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.halfnorm.ppf(quantile, scale=sigma)
+        else:
+            return 0
+        
 
 def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None, x_std=None,
                      confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, threshold=None):
@@ -756,7 +810,13 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         new_df['beta'] = outputs[:,2] 
 
         new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
-    
+
+    elif model.likelihood == 'bernoulli_halfnormal':
+        new_df['pi'] = outputs[:,0]
+        new_df['sigma'] = outputs[:,1]
+
+        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+
     elif model.likelihood == 'b2sgmm':
 
         new_df['pi'] = outputs[:,0]
