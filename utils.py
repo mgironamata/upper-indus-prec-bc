@@ -554,6 +554,18 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
         else:
             return 0
 
+    elif likelihood_fn == 'bernoulli_gumbel':
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['beta']
+        perc = df[series] 
+
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.gumbel.ppf(quantile, loc=sigma, scale=beta)
+        else:
+            return 0
+
 def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
     if likelihood_fn == 'gamma':
         alpha = df['alpha']
@@ -617,7 +629,18 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         
         if perc > pi:
             quantile = (perc - pi)/(1 - pi)
-            return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
+            return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu)) #review
+        else:
+            return 0
+
+    elif likelihood_fn == 'bernoulli_gumbel':
+        pi = df['pi']
+        mu = df['mu']
+        beta = df['beta']
+        
+        if perc > pi:
+            quantile = (perc - pi)/(1 - pi)
+            return stats.gumbel.ppf(quantile, loc=mu, scale=beta)
         else:
             return 0
 
@@ -625,11 +648,14 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
                      confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, threshold=None):
     
     if sequential_samples:
-        outputs = make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=threshold)
+        seq_outputs_dict = {}
+        for i in range(n_samples):
+            outputs = make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=threshold)
+            seq_outputs_dict[i] = outputs
+        
     else:
         outputs = make_predictions(model, test_dataset)
     
-
     if type(st_names_test)==type(None):
         new_df = df.copy()
     else:  
@@ -724,6 +750,13 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         # new_df[f'perc_median'] = 0.5
         # new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
 
+    elif model.likelihood == 'bernoulli_gumbel':
+        new_df['pi'] = outputs[:,0]
+        new_df['mu'] = outputs[:,1]
+        new_df['beta'] = outputs[:,2] 
+
+        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+    
     elif model.likelihood == 'b2sgmm':
 
         new_df['pi'] = outputs[:,0]
@@ -752,7 +785,9 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
     
     if draw_samples:
         if sequential_samples:
-            new_df['sample'] = outputs[:,-1]
+            for i in range(n_samples):
+                outputs = seq_outputs_dict[i]
+                new_df[f'sample_{i}'] = outputs[:,-1]
         else:
             for i in range(n_samples):
                 new_df[f'uniform_{i}'] = new_df.apply(lambda x: np.random.uniform(0,1),axis=1)
@@ -981,7 +1016,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10):
 
     m = RunManager()
     predictions={}
@@ -1078,7 +1113,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
                                 x_std=data.x_std,
                                 confidence_intervals=True,
                                 draw_samples=True,
-                                n_samples=10,
+                                n_samples=n_samples,
                                 sequential_samples = sequential_samples, 
                                 threshold=sample_threshold
                                 )
