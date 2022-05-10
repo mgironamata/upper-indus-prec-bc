@@ -557,12 +557,12 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
     elif likelihood_fn == 'bernoulli_gumbel':
         pi = df['pi']
         mu = df['mu']
-        sigma = df['beta']
+        beta = df['beta']
         perc = df[series] 
 
         if perc > pi:
             quantile = (perc - pi)/(1 - pi)
-            return stats.gumbel_r.ppf(quantile, loc=sigma, scale=beta)
+            return stats.gumbel_r.ppf(quantile, loc=mu, scale=beta)
         else:
             return 0
 
