@@ -178,7 +178,7 @@ class MLP(nn.Module):
             x[:,0] = self.sigmoid(x[:,0]) # pi
             x[:,2] = self.exp(x[:,2]) # sigma
             return x
-        elif self.likelihood=='bernoulli_gumbel':
+        elif self.likelihood=='bernoulli_halfnormal':
             x[:,0] = self.sigmoid(x[:,0]) # pi
             x[:,1] = self.exp(x[:,1]) # sigma
             return x
