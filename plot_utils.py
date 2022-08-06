@@ -746,7 +746,7 @@ def plot_cdf_per_season(st_test,seasons,columns, labels):
 
 def plot_loglik_model_comparison(loglik_values):
 
-    sns.set_theme(context='paper',style='whitegrid',font_scale=1.6)
+    #sns.set_theme(context='paper',style='whitegrid',font_scale=1.6)
     g = sns.catplot(x = "hidden_channels",
                 y = "valid_loss",
                 #hue = "linear_model",

@@ -997,6 +997,19 @@ def SMAPE(df, sim, obs):
     else:
         return abs(df[sim] - df[obs]) / (df[sim] + df[obs])
 
+def BS(df, sim, obs, wet_threshold=0):
+    if obs > wet_threshold:
+        return (sim - 1)**2
+    else:
+        return sim**2
+
+def QS(df, sim, obs, quantile):
+    d = df[obs] - df[sim]
+    if d < 0:
+        return (df[quantile]-1) * d
+    else:
+        return df[quantile] * d
+
 def add_to_dict(xs,d):
     for x in xs:
         print(x)

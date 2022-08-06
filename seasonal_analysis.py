@@ -7,13 +7,16 @@ __all__ = ['seasonal_analysis',
 
 def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
 
+    # Group by station, season and year
     df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_cols + add_cols)].copy()
 
+    # Crate dataframe for precipitation occurrence
     df_dry_days = st_test.groupby(['Station','season','year'], as_index=False)[(columns + sample_cols + add_cols)]
     df_dry_days = df_dry_days.agg([count_zeros]).droplevel(level=1, axis=1)
 
     list_of_edd_cols = []
-    # NUMBER OF DRY DAYS - ABSOLUTE ERROR 
+
+    # DRY DAYS - ABSOLUTE ERROR 
     for i in range(n_samples):
         df_dry_days[f'edd_mlp_{i}'] = (df_dry_days[f'sample_{i}'] - df_dry_days['Prec'])
         list_of_edd_cols.append(f'edd_mlp_{i}')
