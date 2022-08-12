@@ -1,12 +1,22 @@
-name: upperindus
+name: base
 channels:
   - defaults
 dependencies:
-  - python=3.8
-  - jupyter
-  - torchvision
-  - pytorch
-  - torchaudio
+  - conda
+  - python=3.9
+  - python.app
   - jupyterlab
-  - seaborn
-prefix: /Users/marron31/miniconda3/envs/upperindus
+  - numpy
+  - pandas
+  - torchaudio
+  - pytorch
+  - xarray
+  - scipy
+  - netcdf4
+  - scikit-learn
+  - conda-build
+  - xlrd
+  - openpyxl
+  - matplotlib
+  - pillow
+prefix: /Users/marron31/miniconda3
