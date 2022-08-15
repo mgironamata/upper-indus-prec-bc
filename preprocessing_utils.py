@@ -330,16 +330,16 @@ def disjunctive_union_lists(li1, li2):
 def season_apply(df):
     # Premonsoon: Apr-May
     if (df['month'] >= 4) and (df['month'] <= 5):
-        return 'AM' #'Premonsoon (AM)'
+        return 'Premonsoon (AM)'
     # Monsoon: June-Jul-Aug-Sept
     elif (df['month'] >= 6) and (df['month'] <= 9):
-        return 'JJAS' #'Monsoon (JJAS)'
+        return 'Monsoon (JJAS)'
     # Postmonsoon: Oct-Nov-Dec
     elif (df['month'] >= 10) and (df['month'] <= 12):
-        return 'OND' #'Postmonsoon (OND)'
+        return 'Postmonsoon (OND)'
     # Winter: Jan-Feb-Mar
     elif (df['month'] >= 1) or (df['month'] <= 3):
-        return 'JFM' #'Winter (JFM)'
+        return 'Winter (JFM)'
 
 def add_yesterday_observation(st):
     """Add observed precipitation value from previous day"""
