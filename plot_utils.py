@@ -2,7 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np 
 from datetime import datetime
-import geopandas
 import scipy.stats as stats 
 import seaborn as sns
 import time
@@ -12,9 +11,6 @@ import pdb
 import torch
 
 from tabulate import tabulate
-
-import rasterio
-from rasterio.plot import show
 
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import statsmodels.api as sm
@@ -26,7 +22,6 @@ from seasonal_analysis import seasonal_analysis, seasonal_summaries
 
 __all__ = [ 'print_summary_of_results',
             'plot_timeseries',
-            'build_geodataframe',
             'plot_parameter_histograms',
             'plot_sample_distribution',
             'plot_squared_errors',
@@ -36,7 +31,6 @@ __all__ = [ 'print_summary_of_results',
             'plot_acf_for_random_station',
             'plot_sample_from_2gamma_mixure_model',
             'plot_seasonal_timeseries_for_station_year',
-            'plot_map_stations_cv',
             'print_ks_scores',
             'plot_seasonal_boxplot_per_station',
             'plot_cdf_per_season',
@@ -48,9 +42,6 @@ __all__ = [ 'print_summary_of_results',
             'table_of_predictions_confidence_intervals',
             'table_of_predictions_ks_test',
             ]
-
-def build_geodataframe(df, x, y):
-    return geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df[x], df[y]))
 
 def print_summary_of_results(st_test, likelihood_fn, alldays=True, drydays=True, wetdays=True, wet_threshold=0):
 
@@ -581,30 +572,6 @@ def plot_seasonal_timeseries_for_station_year(st_test, seasons, station_name='Ra
 
     plt.tight_layout(w_pad=-0.5)
     # plt.savefig(f"figures/timeseries_seasons_{random_station}_{year}.png", dpi=300)
-    plt.show()
-
-def plot_map_stations_cv(st_test):
-
-    path = '../../PhD/gis/exports/beas_watershed.shp'
-    beas_watershed = geopandas.read_file(path)
-
-    path = '../../PhD/gis/exports/sutlej_watershed.shp'
-    sutlej_watershed = geopandas.read_file(path)
-
-    out_fp_masked_lcc = r'/Users/marron31/Google Drive/PhD/srtm/mosaic_masked_lcc.tif'
-    dem_masked_lcc = rasterio.open(out_fp_masked_lcc)
-
-    gdf = build_geodataframe(st_test.groupby('Station').mean(), x='X', y='Y')
-
-    fig, ax = plt.subplots(1, 1, figsize=(10,5), constrained_layout=False)
-    gdf.plot(ax=ax, column='k_fold', legend=False, cmap='Set1', markersize=5, marker="o", linewidth=3)
-    show(dem_masked_lcc, cmap='terrain', ax=ax, alpha=0.25)
-    beas_watershed.plot(ax=ax, edgecolor='k', color='None', linewidth=1)
-    sutlej_watershed.plot(ax=ax, edgecolor='k', color='None', linewidth=1)
-    ax.set_axis_off()
-    ax.set_aspect(1)
-    plt.tight_layout()
-    plt.savefig('figures/kfold_cv_map.png',dpi=300)
     plt.show()
 
 def print_ks_scores(st_test, seasons, columns):
