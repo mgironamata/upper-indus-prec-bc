@@ -4,11 +4,9 @@ channels:
 dependencies:
   - conda
   - python=3.9
-  - python.app
   - jupyterlab
   - numpy
   - pandas
-  - torchaudio
   - pytorch
   - xarray
   - scipy
