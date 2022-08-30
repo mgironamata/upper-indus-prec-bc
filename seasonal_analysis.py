@@ -6,6 +6,7 @@ __all__ = ['seasonal_analysis',
            ]
 
 def seasonal_analysis(st_test, columns, n_samples, sample_cols, add_cols):
+    """Groups results by station, season and year and computes various assessment metrics."""
 
     # Group by station, season and year
     df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_cols + add_cols)].copy()
