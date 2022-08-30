@@ -869,6 +869,9 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
 
         #new_df['low_ci'] = new_df.apply(mixture_percentile, axis=1, args=(p, model.likelihood))
         #new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-p, model.likelihood))
+
+    new_df[f'BS'] = new_df.apply(BS, axis=1, args=('pi','Prec',0))
+    new_df[f'QS'] = new_df.apply(QS, axis=1, args=('sample_0', 'Prec', 0.9, model.likelihood))
                                               
     return new_df
 
@@ -1003,12 +1006,15 @@ def BS(df, sim, obs, wet_threshold=0):
     else:
         return df[sim]**2
 
-def QS(df, sim, obs, quantile):
+def QS(df, sim, obs, quantile, likelihood):
     d = df[obs] - df[sim]
+    col_name = f'quantile_{quantile*100}'
+    df[col_name] = quantile
+    df[f'sample_{quantile}'] = sample())
     if d < 0:
-        return (df[quantile]-1) * d
+        return (df[col_name]-1) * d
     else:
-        return df[quantile] * d
+        return df[col_name] * d
 
 def add_to_dict(xs,d):
     for x in xs:
@@ -1215,10 +1221,10 @@ def truncate_sample(x, threshold=300):
     else:
         return x
 
-def brier_scores(df, columns, obs, wet_threshold):
-    for c in columns:
-        df[f'BS_{c}'] = df.apply(BS, axis=1, args=(c, obs, wet_threshold))
+# def brier_scores(df, columns, obs, wet_threshold):
+#     for c in columns:
+#         df[f'BS_{c}'] = df.apply(BS, axis=1, args=(c, obs, wet_threshold))
 
-def quantile_scores(df, columns, obs, quantile):    
-    for c in columns:
-        df[f'QS_{c}'] = df.apply(QS, axis=1, args=(c, obs, quantile))
+# def quantile_scores(df, columns, obs, quantile):    
+#     for c in columns:
+#         df[f'QS_{c}'] = df.apply(QS, axis=1, args=(c, obs, quantile))
