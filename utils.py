@@ -1010,7 +1010,7 @@ def QS(df, sim, obs, quantile, likelihood):
     d = df[obs] - df[sim]
     col_name = f'quantile_{quantile*100}'
     df[col_name] = quantile
-    df[f'sample_{quantile}'] = sample())
+    df[f'sample_{quantile}'] = df.apply(sample, axis=1, args=(likelihood, 10000, col_name))
     if d < 0:
         return (df[col_name]-1) * d
     else:
