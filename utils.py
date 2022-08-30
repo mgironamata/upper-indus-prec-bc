@@ -998,10 +998,10 @@ def SMAPE(df, sim, obs):
         return abs(df[sim] - df[obs]) / (df[sim] + df[obs])
 
 def BS(df, sim, obs, wet_threshold=0):
-    if obs > wet_threshold:
-        return (sim - 1)**2
+    if df[obs] > wet_threshold:
+        return (df[sim] - 1)**2
     else:
-        return sim**2
+        return df[sim]**2
 
 def QS(df, sim, obs, quantile):
     d = df[obs] - df[sim]
