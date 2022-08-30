@@ -1215,10 +1215,10 @@ def truncate_sample(x, threshold=300):
     else:
         return x
 
-def brier_scores(df, columns):
+def brier_scores(df, columns, sim, obs, wet_threshold):
     for c in columns:
         df[f'BS_{c}'] = df.apply(BS, axis=1, args=(sim, obs, wet_threshold))
 
-def quantile_scores(df, columns):    
+def quantile_scores(df, columns, sim, obs, quantile):    
     for c in columns:
         df[f'QS_{c}'] = df.apply(QS, axis=1, args=(sim, obs, quantile))
