@@ -871,10 +871,11 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         #new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-p, model.likelihood))
 
     quantile = 0.9
+    sampled_col = f'sample_{quantile*100}'
     new_df[f'quantile_{quantile*100}'] = quantile
-    new_df[f'sample_{quantile*100}'] = new_df.apply(sample, axis=1, args=(model.likelihood, 10000, f'quantile_{quantile*100}'))
+    new_df[sampled_col] = new_df.apply(sample, axis=1, args=(model.likelihood, 10000, sampled_col))
     new_df[f'BS'] = new_df.apply(BS, axis=1, args=('pi','Prec',0))
-    new_df[f'QS'] = new_df.apply(QS, axis=1, args=('sample_0', 'Prec', 0.9, model.likelihood))
+    new_df[f'QS'] = new_df.apply(QS, axis=1, args=(sampled_col, 'Prec', quantile))
                                               
     return new_df
 
