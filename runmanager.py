@@ -1,3 +1,4 @@
+from cgi import test
 from torch.utils.tensorboard import SummaryWriter
 #import torchvision
 
@@ -34,6 +35,9 @@ class RunManager():
         
         self.epoch_count = 0
         self.epoch_loss = 0
+        self.epoch_val_loss = 0
+        self.epoch_test_loss = 0
+        self.epoch_decision_loss = 0
         self.epoch_num_correct = 0
         self.epoch_start_time = None
         
@@ -66,6 +70,9 @@ class RunManager():
 
         self.epoch_count += 1
         self.epoch_loss = 0
+        self.epoch_val_loss = 0
+        self.epoch_test_loss = 0
+        self.epoch_decision_loss = 0
         self.epoch_num_correct = 0
 
     def end_epoch(self):
@@ -74,6 +81,8 @@ class RunManager():
 
         loss = self.epoch_loss
         valid_loss = self.epoch_val_loss
+        test_loss = self.epoch_test_loss
+        decision_loss = self.epoch_decision_loss
 
         #self.tb.add_scalar('Loss', loss, self.epoch_count)
         #self.tb.add_scalar('Accuracy', accuracy, self.epoch_count)
@@ -87,6 +96,8 @@ class RunManager():
         results["epoch"] = self.epoch_count
         results['loss'] = loss
         results["valid_loss"] = valid_loss
+        results["test_loss"] = test_loss
+        results["decision_loss"] = decision_loss
         results['epoch duration'] = epoch_duration
         results['run duration'] = run_duration
         for k,v in self.run_params._asdict().items(): results[k] = v

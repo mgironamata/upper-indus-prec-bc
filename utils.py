@@ -1173,9 +1173,9 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
             m.end_epoch()
 
             save_as_best = True if decision_loss == min(decision_losses) else False
-            save_checkpoint(wd,network.state_dict(),is_best=save_as_best)
+            save_checkpoint(wd, network.state_dict(), is_best=save_as_best)
         
-            PATH = os.path.join(wd.root,'e_%s_loss_%.3f.pth.tar' % (epoch, val_loss))
+            PATH = os.path.join(wd.root, 'e_%s_loss_%.3f.pth.tar' % (epoch, val_loss))
             torch.save(network.state_dict(), PATH)
             
         load_best = True
