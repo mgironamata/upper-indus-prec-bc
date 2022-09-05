@@ -1095,7 +1095,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, choose_val_loss=True):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val'):
 
     m = RunManager()
     predictions={}
@@ -1138,29 +1138,40 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
         train_losses = []
         val_losses = []
+        test_losses = []
+        decision_losses = []
         
         for epoch in range (epochs):
             
             m.begin_epoch()
             
-            train_loss, val_loss, _ = train_epoch(network, 
+            train_loss, val_loss, test_loss = train_epoch(network, 
                                                 optimizer, 
                                                 train_loader, 
                                                 val_loader, 
                                                 epoch=epoch, 
                                                 print_progress=True)
 
-            val_loss = val_loss if choose_val_loss else train_loss
+            if best_by == 'val':
+                decision_loss = val_loss
+            elif best_by == 'train':
+                decision_loss = train_loss
+            elif best_by == 'test':
+                decision_loss = test_loss
 
             m.epoch_loss = train_loss
             m.epoch_val_loss = val_loss
+            m.epoch_test_loss = test_loss
+            m.epoch_decision_loss = decision_loss
             
             train_losses.append(train_loss)
             val_losses.append(val_loss)
+            test_losses.append(test_loss)
+            decision_losses.append(decision_loss)
                 
             m.end_epoch()
-            
-            save_as_best = True if val_loss == min(val_losses) else False
+
+            save_as_best = True if decision_loss == min(decision_losses) else False
             save_checkpoint(wd,network.state_dict(),is_best=save_as_best)
         
             PATH = os.path.join(wd.root,'e_%s_loss_%.3f.pth.tar' % (epoch, val_loss))
