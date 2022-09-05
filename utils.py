@@ -1095,7 +1095,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, choose_val_loss=True):
 
     m = RunManager()
     predictions={}
@@ -1149,7 +1149,9 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
                                                 val_loader, 
                                                 epoch=epoch, 
                                                 print_progress=True)
-                    
+
+            val_loss = val_loss if choose_val_loss else train_loss
+
             m.epoch_loss = train_loss
             m.epoch_val_loss = val_loss
             
