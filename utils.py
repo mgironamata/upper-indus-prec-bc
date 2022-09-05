@@ -1149,7 +1149,8 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
                                                 optimizer, 
                                                 train_loader, 
                                                 val_loader, 
-                                                epoch=epoch, 
+                                                epoch=epoch,
+                                                test_loader=test_loader, 
                                                 print_progress=True)
 
             if best_by == 'val':
