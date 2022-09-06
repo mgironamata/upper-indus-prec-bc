@@ -103,21 +103,21 @@ class MLP(nn.Module):
             # Output layer
             self.out = nn.Linear(self.hidden_channels[-1], self.out_channels)  
 
-    def build_weight_model(self):
-        """Returns a point-wise function that transforms the in_channels-dimensional
-        input features to dimensionality out_channels.
+    # def build_weight_model(self):
+    #     """Returns a point-wise function that transforms the in_channels-dimensional
+    #     input features to dimensionality out_channels.
 
-        Returns:
-          torch.nn.Module: Linear layer applied point-wise to channels.  
-        """
+    #     Returns:
+    #       torch.nn.Module: Linear layer applied point-wise to channels.  
+    #     """
 
-        model = nn.Sequential(
-            nn.Linear(self.in_channels, self.hidden_channels),
-            nn.ReLU(),
-            nn.Linear(self.hidden_channels,self.out_channels),
-            )
-        init_sequential_weights(model)
-        return model
+    #     model = nn.Sequential(
+    #         nn.Linear(self.in_channels, self.hidden_channels),
+    #         nn.ReLU(),
+    #         nn.Linear(self.hidden_channels,self.out_channels),
+    #         )
+    #     init_sequential_weights(model)
+    #     return model
 
     def forward(self, x):
         
