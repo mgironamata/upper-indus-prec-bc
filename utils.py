@@ -1115,7 +1115,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
                 
         elif model_type == "SimpleRNN":
             network = SimpleRNN(in_channels=d,
-                                likelihood_fn=run.likelihood)
+                                likelihood_fn=run.likelihood_fn)
         
         else:
             raise ValueError('No valid model specified')
