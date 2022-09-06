@@ -275,7 +275,7 @@ class SimpleRNN(nn.Module):
         
         self.out_channels = define_out_channels(self)
 
-        self.rnn = nn.RNN(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1)
+        self.rnn = nn.RNN(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1, batch_first=False)
 
     def forward(self, x):
 
