@@ -7,6 +7,7 @@ __all__ = ['init_sequential_weights',
            'MLP',
            'SimpleCNN',
            'GeoStatCNN',
+           'SimpleRNN'
           ]
 
 def init_sequential_weights(model, bias=0.0):
