@@ -14,7 +14,7 @@ import scipy.stats as stats
 
 import os
 
-from models import *
+from models import MLP, SimpleRNN
 from experiment import *
 from runmanager import *
 
