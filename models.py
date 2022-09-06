@@ -389,11 +389,15 @@ class GeoStatCNN(nn.Module):
 
 if __name__ == "__main__":
 
-    network = MLP(in_channels=5, 
-            hidden_channels=[10], 
-            likelihood_fn='bgmm', # 'gaussian', gamma', 'ggmm', bgmm', 'b2gmm', 'b2sgmm'
-            dropout_rate=0,
-            linear_model=True
-           )
+    # network = MLP(in_channels=5, 
+    #         hidden_channels=[10], 
+    #         likelihood_fn='bgmm', # 'gaussian', gamma', 'ggmm', bgmm', 'b2gmm', 'b2sgmm'
+    #         dropout_rate=0,
+    #         linear_model=True
+    #        )
+
     # network = GeoStatCNN(in_channels=1, in_features=3, out_features=2)
+
+    network = SimpleRNN(in_channels=5, likelihood_fn='bgmm')
+
     print("Number of parameters is: ", sum(p.numel() for p in network.parameters() if p.requires_grad))
