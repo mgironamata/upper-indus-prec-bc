@@ -279,7 +279,7 @@ class SimpleRNN(nn.Module):
 
     def forward(self, x):
 
-        x = self.rnn(x)
+        x = self.rnn(torch.transpose(x,0,1))
         x = compute_likelihood(self, x)
 
 class SimpleCNN(nn.Module):

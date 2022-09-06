@@ -1105,6 +1105,18 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
         d = len(predictors)
         
+        train_tensor_x = torch.Tensor(data.data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_tensor_y = torch.Tensor(data.data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
+        train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
+
+        val_tensor_x = torch.Tensor(data.data[f'X_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_tensor_y = torch.Tensor(data.data[f'Y_val_{run.k}'][:,:d]) # transform to torch tensor
+        val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
+        
+        test_tensor_x = torch.Tensor(data.data[f'X_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_tensor_y = torch.Tensor(data.data[f'Y_test_{run.k}'][:,:d]) # transform to torch tensor
+        test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
+
         if model_type == "MLP":
             network = MLP(in_channels=d, 
                 hidden_channels=run.hidden_channels, 
@@ -1120,21 +1132,14 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         else:
             raise ValueError('No valid model specified')
         
-        train_tensor_x = torch.Tensor(data.data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
-        train_tensor_y = torch.Tensor(data.data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
-        train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
-
-        val_tensor_x = torch.Tensor(data.data[f'X_val_{run.k}'][:,:d]) # transform to torch tensor
-        val_tensor_y = torch.Tensor(data.data[f'Y_val_{run.k}'][:,:d]) # transform to torch tensor
-        val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
-        
-        test_tensor_x = torch.Tensor(data.data[f'X_test_{run.k}'][:,:d]) # transform to torch tensor
-        test_tensor_y = torch.Tensor(data.data[f'Y_test_{run.k}'][:,:d]) # transform to torch tensor
-        test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
-        
-        train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
-        val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
-        test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+        if model_type == "MLP":
+            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+        elif model_type == "SimpleRNN":
+            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=False)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
         
         optimizer = torch.optim.Adam(network.parameters(), lr=run.lr)
         
