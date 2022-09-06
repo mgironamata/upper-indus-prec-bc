@@ -87,7 +87,6 @@ class MLP(nn.Module):
         #     self.relu = nn.Identity()
         # else:
         self.relu = nn.ReLU()
-
         self.dropout = nn.Dropout(self.dropout_rate)
 
         # Hidden layers
@@ -130,7 +129,7 @@ class MLP(nn.Module):
                 x = self.dropout(x)
                 x = self.relu(layer(x))
             x = self.out(x)
-        
+
         if self.likelihood==None:
             return x
         elif self.likelihood=='gaussian':
@@ -183,6 +182,107 @@ class MLP(nn.Module):
             x[:,1] = self.exp(x[:,1]) # sigma
             return x
 
+def define_out_channels(self):
+
+    if self.likelihood == None:
+        return 1
+    elif self.likelihood == 'gaussian':
+        return 2
+    elif self.likelihood == 'gamma':
+        return 2
+    elif self.likelihood == 'gamma_nonzero':
+        return 2
+    elif self.likelihood == 'ggmm':
+        return 5   
+    elif self.likelihood == 'bgmm':
+        return 3
+    elif self.likelihood == 'b2gmm':
+        return 6
+    elif self.likelihood == 'b2sgmm':
+        return 7
+    elif self.likelihood == 'btgmm':
+        return 4
+    elif self.likelihood == 'bernoulli_gaussian':
+        return 3
+    elif self.likelihood == 'bernoulli_loggaussian':
+        return 3
+    elif self.likelihood == 'bernoulli_gumbel':
+        return 3
+    elif self.likelihood == 'bernoulli_halfnormal':
+        return 2    
+
+
+def compute_likelihood(self, x):
+
+    if self.likelihood==None:
+        return x
+    elif self.likelihood=='gaussian':
+        x[:,1] = self.exp(x[:,1])
+        return x
+    elif self.likelihood=='gamma_nonzero':
+        x[:,:] = self.exp(x[:,:]) # alpha, beta
+        return x
+    elif self.likelihood=='gamma':
+        x[:,:] = self.exp(x[:,:]) # alpha, beta
+        return x
+    elif self.likelihood=='ggmm':
+        x[:,:-1] = self.exp(x[:,:-1]) # alpha1, beta1, alpha2, beta2
+        x[:,-1]= self.sigmoid(x[:,-1]) # q: weight paramater for gamma mixture model 
+        return x
+    elif self.likelihood=='bgmm':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,1:] = self.exp(x[:,1:]) # alpha, beta
+        return x
+    elif self.likelihood=='b2gmm':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,1:-1] = self.exp(x[:,1:-1]) # alpha1, alpha2, beta1, beta2
+        x[:,-1] = self.sigmoid(x[:,-1]) # q : weight parameter for gamma mixture model (#TO REVIEW)
+        return x
+    elif self.likelihood=='b2sgmm':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,1:5] = self.exp(x[:,1:-2]) # alpha1, alpha2, beta1, beta2
+        x[:,5] = self.sigmoid(x[:,-2]) # q : weight parameter for gamma mixture model (TO REVIEW)
+        x[:,6] = self.exp(x[:,-1]) # t : threshold 
+        return x
+    elif self.likelihood=='btgmm':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,1:-1] = self.exp(x[:,1:]) # alpha, beta
+        x[:-1] = self.exp(x[:-1]) # threshold
+        return x
+    elif self.likelihood=='bernoulli_gaussian':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,2] = self.exp(x[:,2]) # sigma
+        return x
+    elif self.likelihood=='bernoulli_loggaussian':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,2] = self.exp(x[:,2]) # sigma
+        return x
+    elif self.likelihood=='bernoulli_gumbel':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,2] = self.exp(x[:,2]) # sigma
+        return x
+    elif self.likelihood=='bernoulli_halfnormal':
+        x[:,0] = self.sigmoid(x[:,0]) # pi
+        x[:,1] = self.exp(x[:,1]) # sigma
+        return x
+
+class SimpleRNN(nn.Module):
+
+    def __init__(self, in_channels, likelihood_fn='bgmm'):
+
+        super(SimpleRNN, self).__init__()
+
+        self.in_channels = in_channels
+        self.likelihood = likelihood_fn
+        
+        self.out_channels = define_out_channels(self)
+
+        self.rnn = nn.RNN(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1)
+
+    def forward(self, x):
+
+        x = self.rnn(x)
+        x = compute_likelihood(self, x)
 
 class SimpleCNN(nn.Module):
 
