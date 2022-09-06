@@ -103,8 +103,6 @@ class MLP(nn.Module):
             # Output layer
             self.out = nn.Linear(self.hidden_channels[-1], self.out_channels)  
 
-        
-
     def build_weight_model(self):
         """Returns a point-wise function that transforms the in_channels-dimensional
         input features to dimensionality out_channels.
@@ -211,7 +209,6 @@ def define_out_channels(self):
         return 3
     elif self.likelihood == 'bernoulli_halfnormal':
         return 2    
-
 
 def compute_likelihood(self, x):
 
