@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import numpy as np
 from sklearn.preprocessing import scale
 import torch
@@ -1095,7 +1096,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val'):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val', model_type='MLP'):
 
     m = RunManager()
     predictions={}
@@ -1104,12 +1105,20 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
         d = len(predictors)
         
-        network = MLP(in_channels=d, 
+        if model_type == "MLP":
+            network = MLP(in_channels=d, 
                 hidden_channels=run.hidden_channels, 
                 likelihood_fn=run.likelihood_fn,
                 dropout_rate=run.dropout_rate,
                 linear_model=run.linear_model,
                 )
+                
+        elif model_type == "SimpleRNN":
+            network = SimpleRNN(in_channels=d,
+                                likelihood_fn=run.likelihood)
+        
+        else:
+            raise ValueError('No valid model specified')
         
         train_tensor_x = torch.Tensor(data.data[f'X_train_{run.k}'][:,:d]) # transform to torch tensor
         train_tensor_y = torch.Tensor(data.data[f'Y_train_{run.k}'][:,:d]) # transform to torch tensor
