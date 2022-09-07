@@ -1136,6 +1136,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
             val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
             test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+        
         elif model_type == "SimpleRNN":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=False)
             val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
@@ -1159,12 +1160,12 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
             
             m.begin_epoch()
             
-            train_loss, val_loss, test_loss = train_epoch(network, 
-                                                optimizer, 
-                                                train_loader, 
-                                                val_loader, 
+            train_loss, val_loss, test_loss = train_epoch(network,
+                                                optimizer,
+                                                train_loader,
+                                                val_loader,
                                                 epoch=epoch,
-                                                test_loader=test_loader, 
+                                                test_loader=test_loader,
                                                 print_progress=True)
 
             if best_by == 'val':
