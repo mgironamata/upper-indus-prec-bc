@@ -52,7 +52,7 @@ class DataPreprocessing():
         self.split_by = split_by
 
         # Create station dataframe
-        self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = True)
+        self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = filter_incomplete_years)
 
     def split_stations(self):
 
