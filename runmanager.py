@@ -1,7 +1,6 @@
 from torch.utils.tensorboard import SummaryWriter
-
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+
 from IPython.display import display, clear_output
 import pandas as pd
 
