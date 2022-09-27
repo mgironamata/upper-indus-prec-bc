@@ -39,14 +39,14 @@ class SeasonalAnalysis:
         self.n_samples = n_samples
         self.group_by_fields = group_by_fields
         
-    def aggregate_precipitation_intensity_predictions(self) -> pd.DataFrame:
+    def _aggregate_precipitation_intensity_predictions(self) -> pd.DataFrame:
         return self.df.groupby(self.group_by_fields).sum()[(self.columns + self.sample_cols + self.add_cols)].copy()
 
-    def aggregate_precipitation_occurrence_predicitons(self) -> pd.DataFrame:
+    def _aggregate_precipitation_occurrence_predicitons(self) -> pd.DataFrame:
         return self.df.groupby(self.group_by_fields, as_index=False)[(self.columns + self.sample_cols + self.add_cols)].agg([count_zeros]).droplevel(level=1, axis=1) # Crate dataframe for precipitation occurrence
         
 
-    def absolute_error_dry_days(self) -> pd.DataFrame:
+    def _absolute_error_dry_days(self) -> pd.DataFrame:
         
         keep_columns = []
 
@@ -64,18 +64,18 @@ class SeasonalAnalysis:
 
         return self.df[keep_columns]
 
-    def seasonal_analysis(self) -> pd.DataFrame: 
+    def _seasonal_analysis(self) -> pd.DataFrame: 
         """Groups results by station, season and year and computes various assessment metrics."""
 
         # THIS FUNCTION IS NOT PART OF A CLASS HOWEVER MOST OBJECTS ARE CREATED NOT AS PROPERTIES BUT OUTSIDE OF CLASS. REFACTOR. 
 
-        df = self.aggregate_precipitation_intensity_predictions() # group by station, season and year (default)
+        df = self._aggregate_precipitation_intensity_predictions() # group by station, season and year (default)
         
-        df_dry_days = self.aggregate_precipitation_occurrence_predicitons()
+        df_dry_days = self._aggregate_precipitation_occurrence_predicitons()
 
         # df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_cols + add_cols)].copy()
 
-        df_dry_days = self.absolute_error_dry_days()
+        df_dry_days = self._absolute_error_dry_days()
         
         # PRECIPITATION - SQUARED ERROR 
         for c in self.columns:
@@ -144,38 +144,40 @@ class SeasonalAnalysis:
         return df
 
     def seasonal_summaries(self) -> Dict[str, pd.DataFrame]:
+
+        self.sa = self._seasonal_analysis()
         
         # Totals
         value_vars = ['Prec','wrf_prcp','wrf_bc_prcp','sample'] + self.add_cols
-        self.totals = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.totals = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
         
         # Error
         value_vars = [f'e_{c}' for c in self.columns] + ['e_mlp']
-        self.e = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.e = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # MAE
         value_vars = [f'ae_{c}' for c in self.columns] + ['ae_mlp']
-        self.ae = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.ae = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # SE
         value_vars = [f'se_{c}' for c in self.columns] + ['se_mlp']
-        self.se = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.se = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # MAE REDUCTION
         value_vars = [f'aer_{c}' for c in self.columns] + ['aer_mlp']
-        self.aer = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.aer = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # ERROR IN DRY DAYS 
         value_vars = [f'edd_{c}' for c in self.columns] + ['edd_mlp']
-        self.edd = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.edd = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # MSE IMPROVEMENT RATIO   
         value_vars = [f'imp_{c}' for c in self.columns] + ['imp_mlp']
-        self.improvement = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.improvement = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # SMAPE
         value_vars = [f'smape_{c}' for c in self.columns] + ['smape_mlp'] + [f'smape_mlp_{i}' for i in self.add_cols]
-        self.smape = rearrange_dataframe(self.df, self.group_by_fields, value_vars)
+        self.smape = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         d = {}
         
