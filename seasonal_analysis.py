@@ -26,7 +26,7 @@ class SeasonalAnalysis:
 
     def __init__(self, 
                 df : pd.DataFrame, 
-                columns : List(str), 
+                columns : List[str], 
                 sample_cols : List[str], 
                 add_cols : List[str],
                 n_samples : int,
