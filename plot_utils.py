@@ -17,7 +17,7 @@ import statsmodels.api as sm
 import scipy
 
 from utils import gmm_fn
-from seasonal_analysis import seasonal_analysis, seasonal_summaries
+from seasonal_analysis import SeasonalAnalysis
 
 __all__ = [ 'print_summary_of_results',
             'plot_timeseries',
@@ -841,8 +841,13 @@ def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sa
 
     for index, (k,v) in enumerate(predictions.items()):
         
-        df = seasonal_analysis(v['k_all'],columns, n_samples, sample_cols, add_cols)
-        d = seasonal_summaries(df, add_cols=add_cols, cols=columns)
+        SA = SeasonalAnalysis(df = v['k_all'], 
+                              columns=columns, 
+                              sample_cols=sample_cols,
+                              n_samples=n_samples,
+                              group_by_fields= ['Station', 'season', 'year'])
+
+        d = SA.seasonal_summaries()
 
         r = d[metric].copy()
         
