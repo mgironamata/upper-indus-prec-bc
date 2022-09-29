@@ -1131,7 +1131,9 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
         else:
             raise ValueError('No valid model specified')
-        
+
+        network.to(device)
+
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
             val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
