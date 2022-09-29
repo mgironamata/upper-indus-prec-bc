@@ -1105,16 +1105,16 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
         d = len(predictors)
         
-        train_tensor_x = torch.tensor(data.data[f'X_train_{run.k}'][:,:d],device=device) # transform to torch tensor
-        train_tensor_y = torch.tensor(data.data[f'Y_train_{run.k}'][:,:d],device=device) # transform to torch tensor
+        train_tensor_x = torch.tensor(data.data[f'X_train_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
+        train_tensor_y = torch.tensor(data.data[f'Y_train_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
         train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
 
-        val_tensor_x = torch.tensor(data.data[f'X_val_{run.k}'][:,:d],device=device) # transform to torch tensor
-        val_tensor_y = torch.tensor(data.data[f'Y_val_{run.k}'][:,:d],device=device) # transform to torch tensor
+        val_tensor_x = torch.tensor(data.data[f'X_val_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
+        val_tensor_y = torch.tensor(data.data[f'Y_val_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
         val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
         
-        test_tensor_x = torch.tensor(data.data[f'X_test_{run.k}'][:,:d],device=device) # transform to torch tensor
-        test_tensor_y = torch.tensor(data.data[f'Y_test_{run.k}'][:,:d],device=device) # transform to torch tensor
+        test_tensor_x = torch.tensor(data.data[f'X_test_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
+        test_tensor_y = torch.tensor(data.data[f'Y_test_{run.k}'][:,:d],device=device, dtype=float) # transform to torch tensor
         test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
 
         if model_type == "MLP":
@@ -1133,7 +1133,6 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
             raise ValueError('No valid model specified')
 
         network.to(device)
-        network.double()
 
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
