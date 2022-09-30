@@ -701,7 +701,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
 
 def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None, x_std=None,
                      confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, threshold=None):
-    
+
     if sequential_samples:
         seq_outputs_dict = {}
         for i in range(n_samples):
@@ -710,6 +710,8 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         
     else:
         outputs = make_predictions(model, test_dataset)
+
+    outputs.detach()
     
     if type(st_names_test)==type(None):
         new_df = df.copy()
