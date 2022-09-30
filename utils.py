@@ -163,7 +163,7 @@ def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
     #pdb.set_trace()
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs > 0
@@ -192,7 +192,7 @@ def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     """
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs > 0
@@ -230,7 +230,7 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean')
     """
     
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g1_mask = (obs > 0) * (obs < t)
@@ -258,7 +258,7 @@ def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
     """
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs != 0
@@ -284,7 +284,7 @@ def bernoulli_loggaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
     """
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs != 0
@@ -310,7 +310,7 @@ def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
     """
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs != 0
@@ -335,7 +335,7 @@ def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
     """
 
     obs = obs.flatten()
-    logp = torch.zeros(obs.shape)
+    logp = torch.zeros(obs.shape, device=device)
     
     b_mask = obs == 0
     g_mask = obs != 0
