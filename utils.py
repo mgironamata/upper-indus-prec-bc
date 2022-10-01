@@ -369,8 +369,8 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
 
     for i, (inputs, labels) in enumerate(train_loader):
         
-        inputs.to(device)
-        labels.to(device)
+        inputs = inputs.to(device)
+        labels = labels.to(device)
 
         optimizer.zero_grad()
 
