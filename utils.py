@@ -1136,7 +1136,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
 
         network.to(device)
 
-        num_workers = 0 if device == 'cpu' else 8
+        num_workers = 0 if device == 'cpu' else 2
 
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True, num_workers=num_workers)
