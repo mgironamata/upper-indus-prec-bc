@@ -367,7 +367,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
 
     model.train()
 
-    for i, (inputs, labels) in enumerate(train_loader):
+    for _, (inputs, labels) in enumerate(train_loader):
         
         inputs = inputs.to(device)
         labels = labels.to(device)
@@ -391,15 +391,21 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         
     model.eval()
     with torch.no_grad():
-        for i, (inputs, labels) in enumerate(valid_loader):
+        for _, (inputs, labels) in enumerate(valid_loader):
 
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            
             outputs = model(inputs)
             loss = loss_fn(outputs, labels, inputs, model)
             valid_losses.append(loss.item())
 
         if test_loader != None:
 
-            for i, (inputs, labels) in enumerate(test_loader):
+            for _, (inputs, labels) in enumerate(test_loader):
+
+                inputs = inputs.to(device)
+                labels = labels.to(device)
 
                 outputs = model(inputs)
                 loss = loss_fn(outputs, labels, inputs, model)
