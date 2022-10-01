@@ -1136,15 +1136,17 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
 
         network.to(device)
 
+        num_workers = 0 if device == 'cpu' else 8
+
         if model_type == "MLP":
-            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True)
-            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
-            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True, num_workers=num_workers)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False, num_workers=num_workers)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False, num_workers=num_workers)
         
         elif model_type == "SimpleRNN":
-            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=False)
-            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False)
-            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False)
+            train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=False, num_workers=num_workers)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=run.batch_size, shuffle=False, num_workers=num_workers)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=run.batch_size, shuffle=False, num_workers=num_workers)
         
         optimizer = torch.optim.Adam(network.parameters(), lr=run.lr)
         
