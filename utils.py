@@ -1041,7 +1041,7 @@ def make_predictions(model, test_dataset):
 
     with torch.no_grad():
         
-        test_inputs = test_dataset.tensors[0]
+        test_inputs = test_dataset.tensors[0].to(device)
         test_outputs = model(test_inputs)
 
         #   test2_inputs = test2_dataset.tensors[0]
@@ -1145,7 +1145,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
 
         network.to(device)
 
-        num_workers = 0 if device == 'cpu' else 8
+        num_workers = 0 if device == 'cpu' else 24
 
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True, num_workers=num_workers)
