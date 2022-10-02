@@ -720,7 +720,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
     else:
         outputs = make_predictions(model, test_dataset)
 
-    outputs.cpu()
+    outputs =outputs.cpu()
     
     if type(st_names_test)==type(None):
         new_df = df.copy()
@@ -1145,7 +1145,7 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
 
         network.to(device)
 
-        num_workers = 0 if device == 'cpu' else 24
+        num_workers = 0 if device == 'cpu' else 16
 
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True, num_workers=num_workers)
