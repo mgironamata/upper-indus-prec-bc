@@ -1107,7 +1107,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val', model_type='MLP'):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val', model_type='MLP',device=device):
 
     m = RunManager()
     predictions={}
