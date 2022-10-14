@@ -1,51 +1,54 @@
-from audioop import add
-from selectors import SelectSelector
 from typing import Dict, List
 import pandas as pd
 from utils import count_zeros, SMAPE, sample
 
 __all__ = ['SeasonalAnalysis',
-           ]
+            ]
 
 def squared_error(x : pd.Series, y : pd.Series) -> pd.Series:
+    "Returns squared error between 2 pd.Series"
     return (x - y)**2
 
 def absolute_error(x : pd.Series, y : pd.Series) -> pd.Series:
+    "Returns absolute error between 2 pd.Series"
     return abs(x - y)
 
 def error(x : pd.Series, y : pd.Series) -> pd.Series:
+    "Returns error between 2 pd.Series"
     return x - y
 
 def mean_of_samples(df : pd.DataFrame, field_prefix : str, n_samples : int) -> pd.Series:
+    "Returns average of all samples as pd.Series"
     return df[[f'{field_prefix}_{i}' for i in range(n_samples)]].mean(axis=1)
 
 def rearrange_dataframe(df : pd.DataFrame, melt_id_vars : List[str], melt_value_vars : List[str]) -> pd.DataFrame:
+    "Returns rearranged pd.Dataframe"
     return df.reset_index().melt(id_vars=melt_id_vars, value_vars=melt_value_vars)
 
 class SeasonalAnalysis:
+    "Constructs an object to perform seasonal analyses of daily data"
 
     def __init__(self, 
                 df : pd.DataFrame, 
                 columns : List[str], 
-                sample_cols : List[str], 
-                add_cols : List[str],
+                sample_columns : List[str], 
+                additional_columns : List[str],
                 n_samples : int,
                 group_by_fields : List[str] = ['Station','season','year']):
         
         self.df  = df
         self.columns = columns
-        self.sample_cols = sample_cols
-        self.add_cols = add_cols
+        self.sample_columns = sample_columns
+        self.additional_columns = additional_columns
         self.n_samples = n_samples
         self.group_by_fields = group_by_fields
         
     def _aggregate_precipitation_intensity_predictions(self) -> pd.DataFrame:
-        return self.df.groupby(self.group_by_fields).sum()[(self.columns + self.sample_cols + self.add_cols)].copy()
+        return self.df.groupby(self.group_by_fields).sum()[(self.columns + self.sample_columns + self.additional_columns)].copy()
 
     def _aggregate_precipitation_occurrence_predicitons(self) -> pd.DataFrame:
-        return self.df.groupby(self.group_by_fields, as_index=False)[(self.columns + self.sample_cols + self.add_cols)].agg([count_zeros]).droplevel(level=1, axis=1) # Crate dataframe for precipitation occurrence
+        return self.df.groupby(self.group_by_fields, as_index=False)[(self.columns + self.sample_columns + self.additional_columns)].agg([count_zeros]).droplevel(level=1, axis=1) # Crate dataframe for precipitation occurrence
         
-
     def _absolute_error_dry_days(self) -> pd.DataFrame:
         
         keep_columns = []
@@ -67,13 +70,13 @@ class SeasonalAnalysis:
     def _seasonal_analysis(self) -> pd.DataFrame: 
         """Groups results by station, season and year and computes various assessment metrics."""
 
-        # THIS FUNCTION IS NOT PART OF A CLASS HOWEVER MOST OBJECTS ARE CREATED NOT AS PROPERTIES BUT OUTSIDE OF CLASS. REFACTOR. 
+        # THIS FUNCTION IS NOT PART OF A CLASS HOWEVER MOST OBJECTS ARE CREATED NOT AS OUTSIDE PROPERTIES BUT OF CLASS. REFACTOR. 
 
         df = self._aggregate_precipitation_intensity_predictions() # group by station, season and year (default)
         
         df_dry_days = self._aggregate_precipitation_occurrence_predicitons()
 
-        # df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_cols + add_cols)].copy()
+        # df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_columns + additional_columns)].copy()
 
         df_dry_days = self._absolute_error_dry_days()
         
@@ -84,7 +87,7 @@ class SeasonalAnalysis:
     #     df['se_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])**2
     #     df['se_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])**2
 
-        df['sample'] = df[self.sample_cols].mean(axis=1)
+        df['sample'] = df[self.sample_columns].mean(axis=1)
 
         for i in range(self.n_samples):
             df[f'se_mlp_{i}'] = squared_error(df[f'sample_{i}'], df['Prec'])**2
@@ -134,9 +137,9 @@ class SeasonalAnalysis:
         
         df['smape_mlp'] = df.apply(SMAPE, axis=1, args=('sample','Prec')) 
 
-        if 'mean' in self.add_cols:
+        if 'mean' in self.additional_columns:
             df['smape_mlp_mean'] = df.apply(SMAPE, axis=1, args=('mean','Prec'))  
-        if 'median' in self.add_cols:
+        if 'median' in self.additional_columns:
             df['smape_mlp_median'] = df.apply(SMAPE, axis=1, args=('median','Prec')) 
 
         df = pd.merge(df,df_dry_days,on=['Station','season','year'])
@@ -148,7 +151,7 @@ class SeasonalAnalysis:
         self.sa = self._seasonal_analysis()
         
         # Totals
-        value_vars = ['Prec','wrf_prcp','wrf_bc_prcp','sample'] + self.add_cols
+        value_vars = ['Prec','wrf_prcp','wrf_bc_prcp','sample'] + self.additional_columns
         self.totals = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
         
         # Error
@@ -176,7 +179,7 @@ class SeasonalAnalysis:
         self.improvement = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         # SMAPE
-        value_vars = [f'smape_{c}' for c in self.columns] + ['smape_mlp'] + [f'smape_mlp_{i}' for i in self.add_cols]
+        value_vars = [f'smape_{c}' for c in self.columns] + ['smape_mlp'] + [f'smape_mlp_{i}' for i in self.additional_columns]
         self.smape = rearrange_dataframe(self.sa, self.group_by_fields, value_vars)
 
         d = {}

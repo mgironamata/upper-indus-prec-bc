@@ -830,7 +830,7 @@ def plot_cumulative_histograms_per_season(seasonal_dict, seasons):
     plt.tight_layout()
     plt.show()
 
-def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sample_cols, add_cols, metric = 'smape', prefix='smape'):
+def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sample_columns, additional_columns, metric = 'smape', prefix='smape'):
 
     table = []
 
@@ -843,7 +843,8 @@ def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sa
         
         SA = SeasonalAnalysis(df = v['k_all'], 
                               columns=columns, 
-                              sample_cols=sample_cols,
+                              sample_columns=sample_columns,
+                              additional_columns=additional_columns,
                               n_samples=n_samples,
                               group_by_fields= ['Station', 'season', 'year'])
 
@@ -958,7 +959,7 @@ def table_of_predictions_confidence_intervals(predictions, seasons):
 
     print(tabulate(table, headers, tablefmt='simple', disable_numparse=True))
 
-def table_of_predictions_ks_test(predictions, seasons, columns, sample_cols, add_cols):
+def table_of_predictions_ks_test(predictions, seasons, columns, sample_columns, additional_columns):
     
     """[description].
     
@@ -1006,7 +1007,7 @@ def table_of_predictions_ks_test(predictions, seasons, columns, sample_cols, add
                 ks_listb.append(kstestb)
                 ks_listc.append(kstestc)
 
-                for sample in sample_cols:
+                for sample in sample_columns:
                     cdf = np.array([])
                     cdf_s = np.array(df[df['season']==season][sample])
                     cdf = np.concatenate((cdf,cdf_s), axis=None)
