@@ -47,7 +47,7 @@ class SeasonalAnalysis:
         return self.df.groupby(self.group_by_fields).sum()[(self.columns + self.sample_columns + self.additional_columns)].copy()
 
     def _aggregate_precipitation_occurrence_predicitons(self) -> pd.DataFrame:
-        return self.df.groupby(self.group_by_fields, as_index=False)[(self.columns + self.sample_columns + self.additional_columns)].agg([count_zeros]).droplevel(level=1, axis=1) # Crate dataframe for precipitation occurrence
+        return self.df.groupby(self.group_by_fields)[(self.columns + self.sample_columns + self.additional_columns)].agg([count_zeros]).droplevel(level=1, axis=1) # Crate dataframe for precipitation occurrence
         
     def _absolute_error_dry_days(self) -> pd.DataFrame:
         
