@@ -1107,7 +1107,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_outputs
 
-def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val', model_type='MLP',device=device):
+def multirun(data, predictors, params, epochs, split_by='station', sequential_samples=False, sample_threshold=None, n_samples=10, best_by='val', model_type='MLP', use_device=device):
 
     m = RunManager()
     predictions={}
@@ -1143,9 +1143,9 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         else:
             raise ValueError('No valid model specified')
 
-        network.to(device)
+        network.to(use_device)
 
-        num_workers = 0 if device == 'cpu' else 16
+        num_workers = 0 if use_device == 'cpu' else 16
 
         if model_type == "MLP":
             train_loader = DataLoader(dataset=train_dataset, batch_size=run.batch_size, shuffle=True, num_workers=num_workers)
