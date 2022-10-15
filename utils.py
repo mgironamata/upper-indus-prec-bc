@@ -1,33 +1,32 @@
 import os
 import numpy as np
+import pandas as pd
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as Fv
+from torch.utils.data import TensorDataset, DataLoader 
+
 import scipy.stats as stats 
 
 from likelihoods import *
 from metrics import *
-
 from models import MLP, SimpleRNN
 from experiment import *
 from runmanager import *
-
 # from plot_utils import *
 # from preprocessing_utils import *
-
-from torch.utils.data import TensorDataset, DataLoader 
 
 import pdb
 
 __all__ =  [
+            'RunningAverage',
             'train_epoch',
             'loss_fn',
             'gmm_fn',
-            'sample',
+            'sample_apply',
             'mixture_percentile',
             'build_results_df',
-            'RunningAverage',
-            'pairwise_errors',
             'sample_mc',
             'truncate_sample',
             'count_zeros',
@@ -40,6 +39,31 @@ __all__ =  [
             
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 """Device to perform computations on."""
+
+class RunningAverage:
+    """Maintain a running average."""
+
+    def __init__(self):
+        self.avg = 0
+        self.sum = 0
+        self.cnt = 0
+
+    def reset(self):
+        """Reset the running average."""
+        self.avg = 0
+        self.sum = 0
+        self.cnt = 0
+
+    def update(self, val, n=1):
+        """Update the running average.
+        
+        Args:
+            val (float): Value to update with.
+            n (int): Number elements used to compute `val`.
+        """
+        self.sum += val * n
+        self.cnt += n
+        self.avg = self.sum / self.cnt
 
 def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
     """Runs training for one epoch.
@@ -107,7 +131,6 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
                 loss = loss_fn(outputs, labels, inputs, model)
                 test_losses.append(loss.item())
              
-            
     #mean_train_losses.append(np.mean(train_losses))
     #mean_valid_losses.append(np.mean(valid_losses))
     
@@ -117,7 +140,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
-def loss_fn(outputs, labels, inputs, model, reduction='mean'):
+def loss_fn(outputs : torch.tensor, labels : torch.tensor, inputs : torch.tensor, model : MLP, reduction : str = 'mean'):
     """Computes loss function (log-probability of labels).
 
     Args:
@@ -181,18 +204,24 @@ def loss_fn(outputs, labels, inputs, model, reduction='mean'):
     return loss
 
 def gmm_fn(alpha1, alpha2, beta1, beta2, q):
+    "Mixture model of two gamma distributions"
     
     if type(q) == torch.Tensor:
+
         if len(q.shape) == 0:
+
             mixture_weights = torch.stack([q,1-q])
             mixture_alphas = torch.stack([alpha1,alpha2])
             mixture_betas = torch.stack([beta1,beta2])
+
         elif len(q.shape) == 1:
+
             mixture_weights = torch.stack([q,1-q]).permute([1,0])
             mixture_alphas = torch.stack([alpha1,alpha2]).permute([1,0])
             mixture_betas = torch.stack([beta1,beta2]).permute([1,0])
             
     else:
+
         mixture_weights = torch.stack([torch.tensor(q),torch.tensor(1-q)])
         mixture_alphas = torch.stack([torch.tensor(alpha1),torch.tensor(alpha2)])
         mixture_betas = torch.stack([torch.tensor(beta1),torch.tensor(beta2)])
@@ -203,7 +232,8 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     
     return gmm
 
-def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
+def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, series : str = 'uniform'):
+    "Sample modelled distributions from a pd.Dataframe"
     
     if likelihood_fn == 'gaussian':
 
@@ -214,9 +244,11 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
 
         quantile = perc
         ppf = 0
+
         while ppf <= 0:
             quantile = np.random.uniform(0,1)
             ppf = stats.norm.ppf(quantile,loc=mu, scale=sigma)
+            
         return ppf * occurrence
 
     elif likelihood_fn == 'gamma':
@@ -252,6 +284,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return 0
     
     elif likelihood_fn == 'b2gmm':
+
         pi = df['pi']
         alpha1 = df['alpha1']
         beta1 = df['beta1']
@@ -268,6 +301,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return 0
     
     elif likelihood_fn == 'bernoulli_gaussian':
+
         pi = df['pi']
         mu = df['mu']
         sigma = df['sigma']
@@ -280,6 +314,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return 0
     
     elif likelihood_fn == 'bernoulli_loggaussian':
+
         pi = df['pi']
         mu = df['mu']
         sigma = df['sigma']
@@ -292,6 +327,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return 0
 
     elif likelihood_fn == 'bernoulli_gumbel':
+
         pi = df['pi']
         mu = df['mu']
         beta = df['beta']
@@ -304,6 +340,7 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
             return 0
 
     elif likelihood_fn == 'bernoulli_halfnormal':
+
         pi = df['pi']
         sigma = df['sigma']
         perc = df[series] 
@@ -314,16 +351,20 @@ def sample(df, likelihood_fn='bgmm', sample_size=10000, series='uniform'):
         else:
             return 0
 
-def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
+def mixture_percentile(df : pd.DataFrame, perc : float, likelihood_fn : str, sample_size : int = 1000):
+    """Evalutates mixture model distribution of choice based on percentile value."""
 
     if likelihood_fn == 'gamma':
+
         alpha = df['alpha']
         beta = df['beta']
 
         quantile = perc
+
         return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
     
     elif likelihood_fn == 'ggmm':
+
         alpha1 = df['alpha1']
         beta1 = df['beta1']
         alpha2 = df['alpha2']
@@ -335,6 +376,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
         return torch.quantile(dist.sample([sample_size]), quantile).numpy()
 
     elif likelihood_fn == 'bgmm':
+
         pi = df['pi']
         alpha = df['alpha']
         beta = df['beta']
@@ -346,6 +388,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return 0
 
     elif likelihood_fn == 'b2gmm':
+
         pi = df['pi']
         alpha1 = df['alpha1']
         beta1 = df['beta1']
@@ -361,6 +404,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return 0
 
     elif likelihood_fn == 'bernoulli_gaussian':
+
         pi = df['pi']
         mu = df['mu']
         sigma = df['sigma']
@@ -372,6 +416,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return 0
         
     elif likelihood_fn == 'bernoulli_loggaussian':
+
         pi = df['pi']
         mu = df['mu']
         sigma = df['sigma']
@@ -383,6 +428,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return 0
 
     elif likelihood_fn == 'bernoulli_gumbel':
+
         pi = df['pi']
         mu = df['mu']
         beta = df['beta']
@@ -394,6 +440,7 @@ def mixture_percentile(df, perc, likelihood_fn, sample_size=1000):
             return 0
 
     elif likelihood_fn == 'bernoulli_halfnormal':
+
         pi = df['pi']
         sigma = df['sigma']
         
@@ -428,7 +475,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         new_df['mean'] = new_df['alpha']/new_df['beta']
 
         new_df[f'perc_median'] = 0.5
-        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+        new_df[f'median'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_median')
     
     elif model.likelihood == 'gamma_nonzero':
         new_df['alpha'] = outputs[:,0]
@@ -438,7 +485,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
 
         new_df[f'perc_median'] = 0.5
-        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+        new_df[f'median'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_median')
     
     elif model.likelihood == 'gaussian':
         new_df['mu'] = outputs[:,0]
@@ -482,6 +529,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         new_df['q'] = outputs[:,5]
         
         new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+
         new_df['mean'] =  gmm_fn(alpha1 = outputs[:,1],
                                 alpha2 =  outputs[:,2],
                                 beta1 = outputs[:,3],
@@ -490,7 +538,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
                                 ).mean * new_df['occurrence']
         
         new_df[f'perc_median'] = 0.5
-        new_df[f'median'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+        new_df[f'median'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_median')
 
     elif model.likelihood == 'bernoulli_gaussian':
         new_df['pi'] = outputs[:,0]
@@ -558,7 +606,7 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
         else:
             for i in range(n_samples):
                 new_df[f'uniform_{i}'] = new_df.apply(lambda x: np.random.uniform(0,1),axis=1)
-                new_df[f'sample_{i}'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}').astype('float64')
+                new_df[f'sample_{i}'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series=f'uniform_{i}').astype('float64')
 
     # new_df['median'] = new_df.apply(mixture_percentile, axis=1, args=(0.5, model.likelihood))
     # new_df['median'] = new_df['median'] * new_df['occurrence']
@@ -569,66 +617,22 @@ def build_results_df(df, test_dataset, st_names_test, model, p=0.05, x_mean=None
     if confidence_intervals:
 
         new_df[f'perc_low_ci'] = p
-        new_df[f'low_ci'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_low_ci')
+        new_df[f'low_ci'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_low_ci')
 
         new_df[f'perc_high_ci'] = 1-p
-        new_df[f'high_ci'] = new_df.apply(sample, axis=1, likelihood_fn=model.likelihood, series='perc_high_ci')
+        new_df[f'high_ci'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_high_ci')
 
         #new_df['low_ci'] = new_df.apply(mixture_percentile, axis=1, args=(p, model.likelihood))
         #new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-p, model.likelihood))
 
     quantile = 0.9
     new_df[f'QS_quantile'] = quantile
-    new_df['QS_sample'] = new_df.apply(sample, axis=1, args=(model.likelihood, 10000, 'QS_quantile'))
+    new_df['QS_sample'] = new_df.apply(sample_apply, axis=1, args=(model.likelihood, 10000, 'QS_quantile'))
     new_df[f'BS'] = new_df.apply(BS, axis=1, args=('pi','Prec',0))
     new_df[f'QS'] = new_df.apply(QS, axis=1, args=('QS_sample', 'Prec', quantile))
                                               
     return new_df
 
-def pairwise_errors(new_df):
-
-    new_df['se_wrf'] = (new_df['wrf_prcp'] - new_df['Prec'])**2 if ('wrf_prcp' in new_df.columns) else None
-    new_df['se_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec'])**2 if ('wrf_bc_prcp' in new_df.columns) else None
-    new_df['se_mlp_mean'] = (new_df['mean'] - new_df['Prec'])**2 if ('mean' in new_df.columns) else None
-    new_df['se_mlp_median'] = (new_df['median'] - new_df['Prec'])**2 if ('median' in new_df.columns) else None
-    # new_df['se_mlp_median_gamma'] = (new_df['median_gamma'] - new_df['Prec'])**2 
-
-    new_df['e_wrf'] = (new_df['wrf_prcp'] - new_df['Prec']) if ('wrf_prcp' in new_df.columns) else None
-    new_df['e_bcp'] = (new_df['wrf_bc_prcp'] - new_df['Prec']) if ('wrf_bc_prcp' in new_df.columns) else None
-    # new_df['e_mlp'] = (new_df['mean'] - new_df['Prec'])
-
-    i=0
-    while(f'sample_{i}' in new_df.columns):
-        new_df[f'se_mlp_sample_{i}'] = (new_df[f'sample_{i}'] - new_df['Prec'])**2
-        new_df[f'e_mlp_sample_{i}'] = (new_df[f'sample_{i}'] - new_df['Prec'])
-        i += 1
-    
-    return new_df 
-
-class RunningAverage:
-    """Maintain a running average."""
-
-    def __init__(self):
-        self.avg = 0
-        self.sum = 0
-        self.cnt = 0
-
-    def reset(self):
-        """Reset the running average."""
-        self.avg = 0
-        self.sum = 0
-        self.cnt = 0
-
-    def update(self, val, n=1):
-        """Update the running average.
-        
-        Args:
-            val (float): Value to update with.
-            n (int): Number elements used to compute `val`.
-        """
-        self.sum += val * n
-        self.cnt += n
-        self.avg = self.sum / self.cnt
 
 def mixture_percentile_gamma_only(df, perc, likelihood_fn, sample_size=1000):
     if likelihood_fn == 'bgmm':
