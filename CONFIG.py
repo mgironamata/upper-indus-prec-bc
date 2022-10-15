@@ -1,6 +1,19 @@
 # Imports
 from collections import OrderedDict
+from dataclasses import dataclass
+from typing import List
 
+# @dataclass
+# class Parameters:
+#     start : str
+#     end : str
+#     TRAIN_PATH : str
+#     predictors : List[str]
+#     predictand : List[str]
+#     params : OrderedDict
+#     epochs : int
+#     seasons : List[str]
+#     n_samples: int
 
 # Start and end date
 start="1998-01-01"
@@ -29,7 +42,6 @@ predictors = [
 predictand = ['Prec']
 
 # Multirun parameters
-
 params = OrderedDict(
     lr = [0.005]
     ,batch_size = [128]
@@ -42,3 +54,9 @@ params = OrderedDict(
 )
 
 epochs = 5
+
+# Seasons
+seasons = ['JFM', 'AM', 'JJAS','OND']
+
+# Number of samples
+n_samples = 10

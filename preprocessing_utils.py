@@ -377,12 +377,19 @@ def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station'
     
     return split_dict
 
+def calculate_doy_columns(st):
+    st['doy'] = st['Date'].dt.dayofyear
+
+    st['doy_sin'] = st['doy'].transform(lambda x: np.sin(x))
+    st['doy_cos'] = st['doy'].transform(lambda x: np.cos(x))
+
 def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday: str = True, basin_filter = None, filter_incomplete_years = True):
 
     st = (import_dataframe(TRAIN_PATH)
         .pipe(drop_df_NaNs, series='Prec')
         .pipe(clip_time_period, start, end)
         .pipe(add_year_month_season)
+        .pipe(calculate_doy_columns)
         )  
 
     # Add yesterday's observation
