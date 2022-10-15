@@ -1,7 +1,8 @@
 from typing import Dict, List
 import pandas as pd
 import numpy as np
-from utils import count_zeros, SMAPE, sample
+from utils import count_zeros
+from metrics import SMAPE
 from tabulate import tabulate
 import scipy
 
