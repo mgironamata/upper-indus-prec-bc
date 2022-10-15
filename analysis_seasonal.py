@@ -2,10 +2,9 @@ from typing import Dict, List
 import pandas as pd
 import numpy as np
 from utils import count_zeros
-from metrics import SMAPE
+from metrics import absolute_error, squared_error, error, SMAPE
 from tabulate import tabulate
 import scipy
-
 
 """
 TO DO:
@@ -20,18 +19,6 @@ __all__ = [
             'table_of_predictions_for_metric',
             'table_of_predictions_ks_test'
           ]
-
-def squared_error(x : pd.Series, y : pd.Series) -> pd.Series:
-    "Returns squared error between 2 pd.Series"
-    return (x - y)**2
-
-def absolute_error(x : pd.Series, y : pd.Series) -> pd.Series:
-    "Returns absolute error between 2 pd.Series"
-    return abs(x - y)
-
-def error(x : pd.Series, y : pd.Series) -> pd.Series:
-    "Returns error between 2 pd.Series"
-    return x - y
 
 def mean_of_samples(df : pd.DataFrame, field_prefix : str, n_samples : int) -> pd.Series:
     "Returns average of all samples as pd.Series"
@@ -234,9 +221,12 @@ def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sa
     table = []
 
     headers = ['Model']
-    row_a = ['Bann']
-    row_b = ['BannCorr']
-    row_c = ['Norr']
+
+    baseline_rows = {}
+    for c in columns: baseline_rows[c] = [c]
+    # row_a = ['Bann']
+    # row_b = ['BannCorr']
+    # row_c = ['Norr']
 
     for index, (k,v) in enumerate(predictions.items()):
         
@@ -262,24 +252,31 @@ def table_of_predictions_for_metric(predictions, seasons, columns, n_samples, sa
             rs = r[r['season']==season].copy()
             
             if index==0:
-                a = rs[rs['variable']==f'{prefix}_wrf_prcp']['value']
-                b = rs[rs['variable']==f'{prefix}_wrf_bc_prcp']['value']
-                c = rs[rs['variable']==f'{prefix}_precip_norris']['value']
-                row_a.append(f'{a.mean():.2f}')
-                row_a.append(f'{a.median():.2f}')
-                row_b.append(f'{b.mean():.2f}')
-                row_b.append(f'{b.median():.2f}')
-                row_c.append(f'{c.mean():.2f}')
-                row_c.append(f'{c.median():.2f}')
+                for c in columns:
+                    a = rs[rs['variable']==f'{prefix}_{c}']['value']
+                    baseline_rows[c].append(f'{a.mean():.2f}')
+                    baseline_rows[c].append(f'{a.median():.2f}')
+
+                # a = rs[rs['variable']==f'{prefix}_wrf_prcp']['value']
+                # b = rs[rs['variable']==f'{prefix}_wrf_bc_prcp']['value']
+                # c = rs[rs['variable']==f'{prefix}_precip_norris']['value']
+                # row_a.append(f'{a.mean():.2f}')
+                # row_a.append(f'{a.median():.2f}')
+                # row_b.append(f'{b.mean():.2f}')
+                # row_b.append(f'{b.median():.2f}')
+                # row_c.append(f'{c.mean():.2f}')
+                # row_c.append(f'{c.median():.2f}')
                 
             z = rs[rs['variable']==f'{prefix}_mlp']['value']
             row.append(f'{z.mean():.2f}')
             row.append(f'{z.median():.2f}')
                     
         if index==0:
-            table.append(row_a)
-            table.append(row_b)
-            table.append(row_c)
+            for c in columns: 
+                table.append(baseline_rows[c])
+            # table.append(row_a)
+            # table.append(row_b)
+            # table.append(row_c)
             
         table.append(row)
         

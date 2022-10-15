@@ -937,6 +937,15 @@ def multirun(data, predictors, params, epochs, split_by='station', sequential_sa
         
     m.save('results')
 
+    # Create predictions for k_all
+    for run in predictions.keys():
+        for i in range(len(params['k'])):
+            predictions[run][f'k{i}']['k_fold'] = i
+            if i == 0:
+                predictions[run]['k_all'] = predictions[run][f'k{i}']
+            else:
+                predictions[run]['k_all'] = predictions[run]['k_all'].append(predictions[run][f'k{i}'])
+
     return st_test, predictions
 
 def truncate_sample(x, threshold=300):
