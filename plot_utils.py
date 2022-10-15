@@ -34,9 +34,6 @@ __all__ = [ 'print_summary_of_results',
             'plot_losses',
             'print_average_yearly_dd_and_ci',
             'plot_cumulative_histograms_per_season',
-            'table_of_predictions_for_metric',
-            'table_of_predictions_confidence_intervals',
-            'table_of_predictions_ks_test',
             ]
 
 def print_summary_of_results(st_test, likelihood_fn, alldays=True, drydays=True, wetdays=True, wet_threshold=0):
