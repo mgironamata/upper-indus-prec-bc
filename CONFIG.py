@@ -34,7 +34,7 @@ predictors = [
                 'X',
                 'Y',
                 #'aspect',
-                # 'slope',
+                #'slope',
                 'year',
                 'CWV_norris', 
                 'RH2_norris', 'RH500_norris', 
@@ -48,15 +48,15 @@ predictand = ['Prec']
 # Multirun parameters
 params = OrderedDict(
     lr = [0.005]
-    ,batch_size = [128]
+    ,batch_size = [32]
     ,likelihood_fn = ['bgmm','bernoulli_loggaussian'] # 'bernoulli_loggaussian', 'b2gmm']
     ,hidden_channels = [[50]] #[[10],[30],[50],[100],[10,10],[30,30],[50,50],[100,100]]
     ,dropout_rate = [0]
     ,linear_model = [False, True]
-    ,k = list(range(2))
+    ,k = list(range(10))
 )
 
-epochs = 5
+epochs = 20
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']
