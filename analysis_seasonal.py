@@ -98,7 +98,7 @@ class SeasonalAnalysis:
             self.df_agg[f'se_mlp_{i}'] = squared_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])**2
             self.df_agg[f'e_mlp_{i}'] = error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
             self.df_agg[f'ae_mlp_{i}'] = absolute_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
-            self.df_agg[f'smape_mlp{i}'] = self.df_agg.apply(SMAPE, axis=1, args=(f'sample_{i}','Prec')) 
+            self.df_agg[f'smape_mlp_{i}'] = self.df_agg.apply(SMAPE, axis=1, args=(f'sample_{i}','Prec')) 
         
         self.df_agg['se_mlp'] = mean_of_samples(self.df_agg, 'se_mlp', self.n_samples)
         self.df_agg['e_mlp'] = mean_of_samples(self.df_agg, 'e_mlp', self.n_samples)
