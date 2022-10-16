@@ -383,6 +383,8 @@ def calculate_doy_columns(st):
     st['doy_sin'] = st['doy'].transform(lambda x: np.sin(x))
     st['doy_cos'] = st['doy'].transform(lambda x: np.cos(x))
 
+    return st
+
 def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday: str = True, basin_filter = None, filter_incomplete_years = True):
 
     st = (import_dataframe(TRAIN_PATH)
