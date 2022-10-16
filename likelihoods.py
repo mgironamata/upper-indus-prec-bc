@@ -5,6 +5,8 @@ from torch.distributions.gumbel import Gumbel
 from torch.distributions.normal import Normal
 from torch.distributions.half_normal import HalfNormal
 
+import CONFIG
+
 __all__ = [ 'gaussian_logpdf',
             'gamma_logpdf',
             'ggmm_logpdf',
@@ -17,7 +19,9 @@ __all__ = [ 'gaussian_logpdf',
             'bernoulli_halfnormal_logpdf'
           ]
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = CONFIG.device
+
+#  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 """Device to perform computations on."""
 
 def _reduce(logp, reduction):

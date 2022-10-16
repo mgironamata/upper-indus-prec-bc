@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from pandas._config import config
 
 import torch
 import torch.nn as nn
@@ -16,6 +17,8 @@ from experiment import *
 from runmanager import *
 # from plot_utils import *
 # from preprocessing_utils import *
+
+import CONFIG
 
 import pdb
 
@@ -37,7 +40,9 @@ __all__ =  [
             'truncate_sample'
             ]
             
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = CONFIG.device
+
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 """Device to perform computations on."""
 
 class RunningAverage:

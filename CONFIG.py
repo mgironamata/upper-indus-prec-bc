@@ -2,6 +2,7 @@
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import List
+import torch
 
 # @dataclass
 # class Parameters:
@@ -14,6 +15,9 @@ from typing import List
 #     epochs : int
 #     seasons : List[str]
 #     n_samples: int
+
+# Device to perform computations on.
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Start and end date
 start="1998-01-01"
@@ -50,7 +54,7 @@ params = OrderedDict(
     ,dropout_rate = [0]
     ,linear_model = [False, True] #['True','False']
     #,k = [0]
-    ,k = list(range(10))
+    ,k = list(range(2))
 )
 
 epochs = 5
