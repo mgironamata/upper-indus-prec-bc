@@ -379,7 +379,6 @@ def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station'
 
 def calculate_doy_columns(st):
     st['doy'] = st['Date'].dt.dayofyear
-
     st['doy_sin'] = st['doy'].transform(lambda x: np.sin(x))
     st['doy_cos'] = st['doy'].transform(lambda x: np.cos(x))
 
