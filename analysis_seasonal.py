@@ -85,10 +85,12 @@ class SeasonalAnalysis:
             self.df_agg[f'se_{c}'] = squared_error(self.df_agg[c], self.df_agg['Prec']) # squared error
             self.df_agg[f'e_{c}'] = error(self.df_agg[c], self.df_agg['Prec']) # simple error
             self.df_agg[f'ae_{c}'] = absolute_error(self.df_agg[c], self.df_agg['Prec']) # absolute error
-            self.df_agg[f'aer_{c}'] = self.df_agg['ae_wrf_prcp'] - self.df_agg[f'ae_{c}'] # absolute error reduction
-            self.df_agg[f'imp_{c}'] = 1 - self.df_agg[f'se_{c}']/(self.df_agg['se_wrf_prcp']) # improvement ratio
             self.df_agg[f'smape_{c}'] = self.df_agg.apply(SMAPE, axis=1, args=(c, 'Prec'))
         
+        for c in self.columns:
+            self.df_agg[f'aer_{c}'] = self.df_agg['ae_wrf_prcp'] - self.df_agg[f'ae_{c}'] # absolute error reduction
+            self.df_agg[f'imp_{c}'] = 1 - self.df_agg[f'se_{c}']/(self.df_agg['se_wrf_prcp']) # improvement ratio
+            
         self.df_agg['sample'] = self.df_agg[self.sample_columns].mean(axis=1) # mean of samples
 
         # OPTION 1 - COMPUTE METRIC PER SAMPLE, THEN AVERAGE ACROSS SAMPLES
