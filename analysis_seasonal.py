@@ -77,72 +77,37 @@ class SeasonalAnalysis:
     def _seasonal_analysis(self) -> pd.DataFrame: 
         """Groups results by station, season and year and computes various assessment metrics."""
 
-        # THIS FUNCTION IS NOT PART OF A CLASS HOWEVER MOST OBJECTS ARE CREATED NOT AS OUTSIDE PROPERTIES BUT OF CLASS. REFACTOR. 
-
         self.df_agg = self._aggregate_precipitation_intensity_predictions() # group by station, season and year (default)
-        
         self.df_agg_dry_days = self._aggregate_precipitation_occurrence_predicitons()
-
-        # df = st_test.groupby(['Station','season','year']).sum()[(columns + sample_columns + additional_columns)].copy()
-
         self.df_agg_dry_days = self._absolute_error_dry_days()
         
-        # PRECIPITATION - SQUARED ERROR 
         for c in self.columns:
-            self.df_agg[f'se_{c}'] = squared_error(self.df_agg[c], self.df_agg['Prec'])
-            
-    #     df['se_wrf_prcp'] = (df['wrf_prcp'] - df['Prec'])**2
-    #     df['se_wrf_bc_prcp'] = (df['wrf_bc_prcp'] - df['Prec'])**2
-
-        self.df_agg['sample'] = self.df_agg[self.sample_columns].mean(axis=1)
-
-        for i in range(self.n_samples):
-            self.df_agg[f'se_mlp_{i}'] = squared_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])**2
-
-        self.df_agg['se_mlp'] = mean_of_samples(self.df_agg, 'se_mlp', self.n_samples)
-
-        # PRECIPITATION - ERROR & ABSOLUTE ERROR
-        for c in self.columns:
-            self.df_agg[f'e_{c}'] = error(self.df_agg[c], self.df_agg['Prec'])
-            self.df_agg[f'ae_{c}'] = absolute_error(self.df_agg[c], self.df_agg['Prec'])
-        
-    #     self.df_agg['e_wrf_prcp'] = (self.df_agg['wrf_prcp'] - self.df_agg['Prec'])
-    #     self.df_agg['e_wrf_bc_prcp'] = (self.df_agg['wrf_bc_prcp'] - self.df_agg['Prec'])  
-
-    #     self.df_agg['ae_wrf_prcp'] = abs(self.df_agg['wrf_prcp'] - self.df_agg['Prec'])
-    #     self.df_agg['ae_wrf_bc_prcp'] = abs(self.df_agg['wrf_bc_prcp'] - self.df_agg['Prec'])
-
-        for i in range(self.n_samples):
-            self.df_agg[f'e_mlp_{i}'] = error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
-            self.df_agg[f'ae_mlp_{i}'] = absolute_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
-
-
-        self.df_agg['e_mlp'] = mean_of_samples(self.df_agg, 'e_mlp', self.n_samples)
-        self.df_agg['ae_mlp'] = mean_of_samples(self.df_agg, 'ae_mlp', self.n_samples)
-
-        # PRECIPITATION - ABSOLUTE ERROR REDUCTION
-        for c in self.columns:
-            self.df_agg[f'aer_{c}'] = self.df_agg['ae_wrf_prcp'] - self.df_agg[f'ae_{c}'] 
-        
-        self.df_agg['aer_mlp'] = self.df_agg['ae_wrf_prcp'] - self.df_agg['ae_mlp']
-        #self.df_agg['aer_wrf_bc_prcp'] = self.df_agg['ae_wrf_prcp'] - self.df_agg['ae_wrf_bc_prcp']
-
-        # PRECIPITATION - MSE IMPROVEMENT RATIO
-        for c in self.columns:
-            self.df_agg[f'imp_{c}'] = 1 - self.df_agg[f'se_{c}']/(self.df_agg['se_wrf_prcp'])
-        
-        #self.df_agg['imp_wrf_bc_prcp'] = 1 - self.df_agg['se_wrf_bc_prcp']/(self.df_agg['se_wrf_prcp'])
-        
-        self.df_agg['imp_mlp'] = 1 - self.df_agg['se_mlp']/(self.df_agg['se_wrf_prcp'])
-
-        # PRECIPITATION - SMAPE
-        for c in self.columns:
+            self.df_agg[f'se_{c}'] = squared_error(self.df_agg[c], self.df_agg['Prec']) # squared error
+            self.df_agg[f'e_{c}'] = error(self.df_agg[c], self.df_agg['Prec']) # simple error
+            self.df_agg[f'ae_{c}'] = absolute_error(self.df_agg[c], self.df_agg['Prec']) # absolute error
+            self.df_agg[f'aer_{c}'] = self.df_agg['ae_wrf_prcp'] - self.df_agg[f'ae_{c}'] # absolute error reduction
+            self.df_agg[f'imp_{c}'] = 1 - self.df_agg[f'se_{c}']/(self.df_agg['se_wrf_prcp']) # improvement ratio
             self.df_agg[f'smape_{c}'] = self.df_agg.apply(SMAPE, axis=1, args=(c, 'Prec'))
         
-    #     self.df_agg['smape_wrf_prcp'] = self.df_agg.apply(SMAPE, axis=1, args=('wrf_prcp','Prec')) 
-    #     self.df_agg['smape_wrf_bc_prcp'] = self.df_agg.apply(SMAPE, axis=1, args=('wrf_bc_prcp','Prec')) 
+        self.df_agg['sample'] = self.df_agg[self.sample_columns].mean(axis=1) # mean of samples
+
+        # OPTION 1 - COMPUTE METRIC PER SAMPLE, THEN AVERAGE ACROSS SAMPLES
+        for i in range(self.n_samples):
+            self.df_agg[f'se_mlp_{i}'] = squared_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])**2
+            self.df_agg[f'e_mlp_{i}'] = error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
+            self.df_agg[f'ae_mlp_{i}'] = absolute_error(self.df_agg[f'sample_{i}'], self.df_agg['Prec'])
+            self.df_agg[f'smape_mlp{i}'] = self.df_agg.apply(SMAPE, axis=1, args=(f'sample_{i}','Prec')) 
         
-        self.df_agg['smape_mlp'] = self.df_agg.apply(SMAPE, axis=1, args=('sample','Prec')) 
+        self.df_agg['se_mlp'] = mean_of_samples(self.df_agg, 'se_mlp', self.n_samples)
+        self.df_agg['e_mlp'] = mean_of_samples(self.df_agg, 'e_mlp', self.n_samples)
+        self.df_agg['ae_mlp'] = mean_of_samples(self.df_agg, 'ae_mlp', self.n_samples)
+        self.df_agg['smape_mlp'] = mean_of_samples(self.df_agg, 'smape_mlp',self.n_samples)
+            
+        self.df_agg['aer_mlp'] = self.df_agg['ae_wrf_prcp'] - self.df_agg['ae_mlp']   
+        self.df_agg['imp_mlp'] = 1 - self.df_agg['se_mlp']/(self.df_agg['se_wrf_prcp'])
+        
+        # OPTION 2 - AVERAGE SAMPLES, THEN COMPUTE METRIC OF AVERAGED SAMPLE
+        # self.df_agg['smape_mlp'] = self.df_agg.apply(SMAPE, axis=1, args=('sample','Prec')) 
 
         if 'mean' in self.additional_columns:
             self.df_agg['smape_mlp_mean'] = self.df_agg.apply(SMAPE, axis=1, args=('mean','Prec'))  
