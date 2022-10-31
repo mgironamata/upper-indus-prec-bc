@@ -7,6 +7,8 @@ import random, pickle
 import torch
 from torch.utils.data import TensorDataset, DataLoader 
 
+import pdb
+
 __all__ = ['import_dataframe',
            'drop_df_NaNs',
            'clip_time_period',
@@ -51,8 +53,12 @@ class DataPreprocessing():
         self.include_non_bc_stations = include_non_bc_stations
         self.split_by = split_by
 
+        
+
         # Create station dataframe
         self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = filter_incomplete_years)
+        self.station_dict = self.create_station_dict()
+        self.st['StationNum'] = pd.factorize(self.st.Station)[0]
 
     def split_stations(self):
 
@@ -97,6 +103,11 @@ class DataPreprocessing():
                                                   split_by = self.split_by, 
                                                   include_non_bc_stations = self.include_non_bc_stations)
 
+    def create_station_dict(self):
+        self.station_dict = {}
+        for s in self.st['Station'].unique():
+            self.station_dict[s] = self.st[self.st['Station']==s]
+
     def load_split_dict(self, pickle_path = "split_dict.pickle"):
         self.loaded_dictionary = pickle.load(open(pickle_path, "rb"))
         self.split_dict = self.loaded_dictionary.copy()
@@ -140,6 +151,7 @@ class DataPreprocessing():
             if self.split_by=='station':
                 self.data[f'X_{i}'] = (self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
                 self.data[f'Y_{i}'] = self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictand].to_numpy()
+                self.data[f'S_{i}'] = self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][['StationNum']].to_numpy()
 
             elif self.split_by=='year':
                 self.data[f'X_{i}'] = (self.st[self.st['year'].isin(self.years_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
@@ -445,7 +457,10 @@ def create_input_data(st, predictors, predictand, split_dict, split_by='station'
             data[f'Y_val_{i}'] = data[f'set_val_{i}'][predictand].to_numpy()
             data[f'Y_test_{i}'] = data[f'set_test_{i}'][predictand].to_numpy()
 
-        
+            data[f'S_train_{i}'] = data[f'set_train_{i}'][['StationNum']].to_numpy()
+            data[f'S_val_{i}'] = data[f'set_val_{i}'][['StationNum']].to_numpy()
+            data[f'S_test_{i}'] = data[f'set_test_{i}'][['StationNum']].to_numpy()
+
         elif split_by=='year':
         
             data[f'X_train_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['train'])][predictors].to_numpy() - x_mean) / x_std

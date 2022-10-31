@@ -17,14 +17,22 @@ import torch
 #     n_samples: int
 
 # Device to perform computations on.
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 # Start and end date
 start="1998-01-01"
 end="2015-12-31"
 
 # Data paths
-TRAIN_PATH = '../../data/norris/langtang/observations_with_WRF_norris.pkl'
+
+DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norris_ready.pkl',
+              'ICIMOD' : '../../data/norris/enriched_obs/enriched_langtang_obs_norris_ready.pkl',
+              'SUSHIWAT' : '../../data/norris/enriched_obs/enriched_sushiwat_obs_norris_ready.pkl',
+              'COMBINED' : '../../data/norris/enriched_obs/enriched_combined_obs_norris_ready.pkl'}
+
+
+TRAIN_PATH = DATA_PATHS['COMBINED']
 
 # Features 
 predictors = [ 
@@ -40,7 +48,13 @@ predictors = [
                 'RH2_norris', 'RH500_norris', 
                 'T2_norris', 'T2max_norris', 'T2min_norris', 'Td2_norris', 
                 'precip_norris', 'rain_norris', 
-                'u10_norris', 'u500_norris', 'v10_norris', 'v500_norris',
+                # 'u500_norris', 'v500_norris',
+                'u10_norris', 'v10_norris', 
+                'cape_norris', 
+                'u250_norris','v250_norris', 
+                'w250_norris', 'w500_norris', 
+                'hgt_norris', 'lu_index_norris', 
+                # 'xland_norris'
               ]
 
 predictand = ['Prec']
@@ -48,15 +62,19 @@ predictand = ['Prec']
 # Multirun parameters
 params = OrderedDict(
     lr = [0.005]
-    ,batch_size = [32]
-    ,likelihood_fn = ['bgmm','bernoulli_loggaussian'] # 'bernoulli_loggaussian', 'b2gmm']
-    ,hidden_channels = [[50]] #[[10],[30],[50],[100],[10,10],[30,30],[50,50],[100,100]]
-    ,dropout_rate = [0]
-    ,linear_model = [False, True]
+    ,batch_size = [128] #, 32]
+    ,likelihood_fn = ['bgmm'] # 'bernoulli_loggaussian', 'b2gmm']
+    ,dropout_rate = [0, 0.25]
     ,k = list(range(10))
+    ,model_arch = [('VGLM',[]),
+                   ('MLP',[10]),
+                   ('SimpleRNN',[10]),
+                  #  ('MLP',[50,50]),
+                  #  ('SimpleRNN',[50,50])
+                  ]
 )
 
-epochs = 20
+epochs = 10
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']

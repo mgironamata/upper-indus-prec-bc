@@ -1,6 +1,7 @@
 import os
 import shutil
 import time
+import string, random
 
 import slugify
 import torch
@@ -9,7 +10,7 @@ __all__ =  ['generate_root',
             'save_checkpoint',
             'WorkingDirectory']
 
-def generate_root(name):
+def generate_root(name, show_timestamp = False, show_label = True, label_name = None):
     """Generate a root path.
 
     Args:
@@ -18,8 +19,20 @@ def generate_root(name):
     Returns:
 
     """
+    
     now = time.strftime('%Y-%m-%d_%H-%M-%S')
-    return os.path.join('_experiments', f'{now}_{slugify.slugify(name)}')
+    
+    if label_name is None:
+        label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
+    else:
+        label = label_name
+
+    if show_timestamp and not(show_label):
+        return os.path.join('_experiments', f'{now}_{slugify.slugify(name)}')
+    elif not(show_timestamp) and show_label: 
+        return os.path.join('_experiments', f'{label}_{slugify.slugify(name)}')
+    elif show_timestamp and show_label:
+        return os.path.join('_experiments', f'{label}_{now}_{slugify.slugify(name)}')
 
 def save_checkpoint(wd, state, is_best):
     """Save a checkpoint.
