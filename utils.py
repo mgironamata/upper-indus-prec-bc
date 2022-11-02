@@ -4,6 +4,7 @@ import pandas as pd
 from pandas._config import config
 from math import prod
 import pickle
+import random, string
 
 import torch
 import torch.nn as nn
@@ -862,6 +863,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
     m = RunManager()
     predictions={}
 
+    random_label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
+
     for run in RunBuilder.get_runs(params):
 
         model_type = run.model_arch[0]
@@ -927,16 +930,17 @@ def multirun(data, predictors, params, epochs, split_by='station',
         
         change_folder = True
         if change_folder:
+
             experiment_name = f'{run}'
             if load_run is None:
-                wd = WorkingDirectory(generate_root(experiment_name))
+                wd = WorkingDirectory(generate_root(experiment_name, label_name=random_label))
             else:
                 load_root = generate_root(experiment_name, 
                                             show_timestamp = False, 
                                             show_label = True, 
                                             label_name = load_run)
             
-            MASTER_ROOT = f"_experiments/{load_run}/"
+            MASTER_ROOT = f"_experiments/{random_label}/"
             if not(os.path.isdir(MASTER_ROOT)):
                 os.mkdir(MASTER_ROOT)
         
@@ -1051,6 +1055,9 @@ def multirun(data, predictors, params, epochs, split_by='station',
                 predictions[run]['k_all'] = predictions[run][f'k{i}']
             else:
                 predictions[run]['k_all'] = predictions[run]['k_all'].append(predictions[run][f'k{i}'])
+    
+    with open(os.path.join(MASTER_ROOT,'predictions.pkl'), 'wb') as handle:
+        pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return st_test, predictions
 

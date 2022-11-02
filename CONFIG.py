@@ -21,7 +21,7 @@ import torch
 device = 'cpu'
 
 # Start and end date
-start="1998-01-01"
+start="1970-01-01"
 end="2015-12-31"
 
 # Data paths
@@ -43,14 +43,14 @@ predictors = [
                 'Y',
                 #'aspect',
                 #'slope',
-                'year',
+                # 'year',
                 'CWV_norris', 
                 'RH2_norris', 'RH500_norris', 
                 'T2_norris', 'T2max_norris', 'T2min_norris', 'Td2_norris', 
                 'precip_norris', 'rain_norris', 
-                # 'u500_norris', 'v500_norris',
+                'u500_norris', 'v500_norris',
                 'u10_norris', 'v10_norris', 
-                'cape_norris', 
+                # 'cape_norris', 
                 'u250_norris','v250_norris', 
                 'w250_norris', 'w500_norris', 
                 'hgt_norris', 'lu_index_norris', 
@@ -64,13 +64,14 @@ params = OrderedDict(
     lr = [0.005]
     ,batch_size = [128] #, 32]
     ,likelihood_fn = ['bgmm'] # 'bernoulli_loggaussian', 'b2gmm']
-    ,dropout_rate = [0, 0.25]
+    ,dropout_rate = [0]
     ,k = list(range(10))
-    ,model_arch = [('VGLM',[]),
+    ,model_arch = [
+                   ('VGLM',[]),
                    ('MLP',[10]),
                    ('SimpleRNN',[10]),
-                  #  ('MLP',[50,50]),
-                  #  ('SimpleRNN',[50,50])
+                   ('MLP',[50,50]),
+                   ('SimpleRNN',[50,50])
                   ]
 )
 
