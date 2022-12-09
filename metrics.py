@@ -1,4 +1,8 @@
 import pandas as pd
+import numpy as np
+import scipy 
+import CRPS.CRPS as pscore
+
 
 __all__ = [ 
             'squared_error',
@@ -6,7 +10,8 @@ __all__ = [
             'error',
             'SMAPE',
             'BS',
-            'QS' 
+            'QS',
+            'CRPS_apply'
           ]
 
 def squared_error(x : pd.Series, y : pd.Series) -> pd.Series:
@@ -42,3 +47,10 @@ def QS(df : pd.DataFrame, sim : str, obs : str, quantile : float):
         return (quantile-1) * d
     else:
         return quantile * d
+
+def CRPS_apply(df : pd.DataFrame, x : np.array = None, observation_series: str = 'Prec'):
+    if x is None:
+        # TO DO: INCLUDE OTHER PROBABILITY DISTRIBUTIONS OTHER THAT THE BERNOULLI GAMMA MIXTURE MODEL
+        x = scipy.stats.gamma.ppf(q=np.linspace(0,1,100)[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
+    crps,fcrps,acrps = pscore(x, df[observation_series]).compute()
+    return crps

@@ -10,7 +10,7 @@ __all__ =  ['generate_root',
             'save_checkpoint',
             'WorkingDirectory']
 
-def generate_root(name, show_timestamp = False, show_label = True, label_name = None):
+def generate_root(name, show_timestamp = False, show_label = True, label_name = None, root = '/data/hpcdata/users/marron31/'):
     """Generate a root path.
 
     Args:
@@ -28,11 +28,11 @@ def generate_root(name, show_timestamp = False, show_label = True, label_name = 
         label = label_name
 
     if show_timestamp and not(show_label):
-        return os.path.join('_experiments', f'{now}_{slugify.slugify(name)}')
+        return os.path.join(root, '_experiments', f'{now}_{slugify.slugify(name)}')
     elif not(show_timestamp) and show_label: 
-        return os.path.join('_experiments', f'{label}_{slugify.slugify(name)}')
+        return os.path.join(root, '_experiments', f'{label}_{slugify.slugify(name)}')
     elif show_timestamp and show_label:
-        return os.path.join('_experiments', f'{label}_{now}_{slugify.slugify(name)}')
+        return os.path.join(root, '_experiments', f'{label}_{now}_{slugify.slugify(name)}')
 
 def save_checkpoint(wd, state, is_best):
     """Save a checkpoint.

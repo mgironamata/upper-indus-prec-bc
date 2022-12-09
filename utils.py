@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as Fv
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 
+from captum.attr import IntegratedGradients, NoiseTunnel, DeepLift, GradientShap, FeatureAblation
+
 import scipy.stats as stats 
 
 from likelihoods import *
@@ -296,6 +298,20 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     gmm = torch.distributions.mixture_same_family.MixtureSameFamily(mix, comp) 
     
     return gmm
+
+def cdf_apply(df: pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, obs : float = 10):
+    
+    if likelihood_fn == 'bgmm':
+        
+        pi = df['pi']
+        alpha = df['alpha']
+        beta = df['beta']
+        # perc = df[series] 
+
+        return pi + stats.gamma.cdf(obs, a=alpha, loc=0, scale=1/beta)*(1-pi)
+
+    else:
+        raise ValueError('Probability distribution not yet implemented')
 
 def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, series : str = 'uniform'):
     "Sample modelled distributions from a pd.Dataframe"
@@ -858,12 +874,17 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
 def multirun(data, predictors, params, epochs, split_by='station', 
              sequential_samples=False, sample_threshold=None, n_samples=10, 
-             best_by='val', use_device=device, load_run=None):
+             best_by='val', use_device=device, load_run=None, feature_attribution=True, save_to = '/data/hpcdata/users/marron31/', experiment_label = None):
 
     m = RunManager()
     predictions={}
+    importance={}
 
-    random_label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
+    if experiment_label is None:
+        random_label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
+    else:
+        random_label = experiment_label
+
 
     for run in RunBuilder.get_runs(params):
 
@@ -940,7 +961,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                             show_label = True, 
                                             label_name = load_run)
             
-            MASTER_ROOT = f"_experiments/{random_label}/"
+            MASTER_ROOT = f"{save_to}_experiments/{random_label}/"
             if not(os.path.isdir(MASTER_ROOT)):
                 os.mkdir(MASTER_ROOT)
         
@@ -965,12 +986,9 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                                     test_loader=test_loader,
                                                     print_progress=True)
 
-                if best_by == 'val':
-                    decision_loss = val_loss
-                elif best_by == 'train':
-                    decision_loss = train_loss
-                elif best_by == 'test':
-                    decision_loss = test_loss
+                if best_by == 'val': decision_loss = val_loss
+                elif best_by == 'train': decision_loss = train_loss
+                elif best_by == 'test': decision_loss = test_loss
 
                 m.epoch_loss = train_loss
                 m.epoch_val_loss = val_loss
@@ -1003,8 +1021,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
 
         # with torch.no_grad():
         #     predictands = network(test_tensor_x)
-        #     # predictands = network(val_tensor_x)
-        
+        #     # predictands = network(val_tensor_x)        
+
         if split_by == 'year':
             input_df = data.st[(data.st['year'].isin(data.split_dict[f'k{k}']['test']))] 
             input_st_names = None
@@ -1026,8 +1044,6 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                 model_type=model_type
                                 )
         
-        # linear_flag = 'L' if run.linear_model else 'NL'
-        
         key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}'
         print(key)
         
@@ -1038,6 +1054,24 @@ def multirun(data, predictors, params, epochs, split_by='station',
 
         with open(os.path.join(MASTER_ROOT,'predictions.pkl'), 'wb') as handle:
             pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if feature_attribution:
+
+            fa = FeatureAblation(network)
+
+            for i in range(network.out_channels):
+                fa_attr = fa.attribute(test_dataset.tensors[0], target=i)  
+
+                if not(key in importance.keys()):
+                    importance[key] = {}  
+                
+                if not(f'k{k}' in importance[key]):
+                    importance[key][f'k{k}'] = {}
+
+                importance[key][f'k{k}'][f'{i:.0f}'] = fa_attr
+        
+            with open(os.path.join(MASTER_ROOT,'importance.pkl'), 'wb') as handle:
+                pickle.dump(importance, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
         if load_run is None:
             SAVEPATH = os.path.join(wd.root, "st_test.pkl")
@@ -1059,7 +1093,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
     with open(os.path.join(MASTER_ROOT,'predictions.pkl'), 'wb') as handle:
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    return st_test, predictions
+    return st_test, predictions, importance
 
 def truncate_sample(x, threshold=300):
     if x>threshold:

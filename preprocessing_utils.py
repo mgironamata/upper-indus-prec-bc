@@ -62,6 +62,10 @@ class DataPreprocessing():
 
     def split_stations(self):
 
+        sort_by_elev = True
+        if sort_by_elev:
+            self.st = self.st.sort_values(by='Z', ascending=True)
+
         if self.split_bias_corrected_only:
             
             #  List bias-corrected and non-bias-corrected stations
@@ -76,10 +80,11 @@ class DataPreprocessing():
             self.bc_stations = self.st['Station'].unique()
             self.non_bc_stations = []
             self.st_names = self.st['Station'].unique()
+            self.st_elevs = self.st['Z'].unique()
 
         self.st_names = np.array(self.st_names)
 
-        np.random.shuffle(self.st_names) # shuffle stations 
+        # np.random.shuffle(self.st_names) # shuffle stations 
 
         split = round(len(self.st_names) * 0.2)
 

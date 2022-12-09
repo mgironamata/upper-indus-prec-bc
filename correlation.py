@@ -4,10 +4,13 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import datetime
+import pdb
 
 from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.tsa.stattools import acf
 from scipy.spatial.distance import cdist
+
+from scipy import stats
 
 def occurrence(df, series='Prec'):
     if df[series] == 0:
@@ -614,17 +617,19 @@ def plot_acv_for_multiple_seasons(df):
     # plt.savefig('figures/autocorr-by-lag-per-season.png',dpi=300)
     plt.show()
 
-def plot_qq_for_all_stations(df):
+def plot_qq_for_all_stations(df : pd.DataFrame, n_rows : int = 9, n_cols : int = 7, sim : pd.Series = 'wrf_prcp', obs : pd.Series = 'Prec', mod : pd.Series = 'sample_0', plot_all_samples = False):
 
     sns.set_theme(context='paper', style='white', font_scale=1.4)
 
-    n_rows = 9
-    n_cols = 7
-    _, axes = plt.subplots(n_rows,n_cols,figsize=(18,22))
+    # n_rows = 9
+    # n_cols = 7
+    _, axes = plt.subplots(n_rows,n_cols,figsize=(n_cols*3,n_rows*3))
 
+    m = 100 * np.round(max(df[obs].max(), df[sim].max())/100) + 50
+    # m = max(df[obs].max(), df[sim].max()) + 50
 
     sorted_stations = df.groupby(['Station']).mean().sort_values('Z').reset_index()['Station'].unique()
-    sorted_elevations = [int(a) for a in df.groupby(['Station']).mean().sort_values('Z').reset_index()['Z'].unique()]
+    sorted_elevations = [int(a) for a in df.groupby(['Station']).mean().sort_values('Z').reset_index()['Z'].values]
 
     sorted_labels = [f'{b} ({a})' for a,b in zip(sorted_elevations,sorted_stations)]
 
@@ -636,38 +641,70 @@ def plot_qq_for_all_stations(df):
         
         s = sorted_stations[index] #st['Station'].unique()[np.random.randint(len(st['Station'].unique()))]
 
-        b = df[df['Station']==s]['Basin'].unique()
+        # b = df[df['Station']==s]['Basin'].unique()
+        # qs = np.concatenate([
+                            # np.array([0.00001,0.0001,0.001,0.01]),
+                            # np.arange(0,1,0.2)[1:],
+                            # np.array([0.99,0.999,0.9999])
+                            # ])
+
+        dfs = df[df['Station']==s].copy()
+
+        qs = np.arange(0,1,0.01)[1:]                
+        q_sim = np.quantile(dfs[sim], qs)
+        q_obs = np.quantile(dfs[obs], qs)
+        
+        q_mod = []
+        for q in qs:
+            y = np.nan_to_num((q > dfs['pi'].to_numpy()).astype('int') * stats.gamma.ppf(q=(q - dfs['pi'])/(1-dfs['pi']), a=dfs['alpha'].to_numpy(), loc=0, scale=1/dfs['beta'].to_numpy())).mean()
+            q_mod.append(y)
+        # q_sim = np.sort(df[df['Station']==s][sim])
+        # q_obs = np.sort(df[df['Station']==s][obs])
         
 
-        x = df[df['Station']==s]['wrf_prcp']
-        y = df[df['Station']==s]['Prec']
+        if plot_all_samples:
+            pass
+            # for i in range(10): # TO DO : NUMBER OF SAMPLES SHOULD BE A PARAMETER OR EXTRACTED FROM DATAFRAME
+            #     mod = f'sample_{i}'
+            #     q_mod = np.sort(df[df['Station']==s][mod])
+            #     ax.plot(q_mod, q_obs, '.--')
+        # else: 
+        #     q_mod = np.sort(df[df['Station']==s][mod])
+        #     ax.plot(q_mod, q_obs, 'o--')
 
-        qx = np.sort(x)
-        qy = np.sort(y)
+        ax.plot(q_mod, q_obs, '-xb', linewidth=2)
+        ax.plot(q_sim, q_obs, '-xk', linewidth=2)
+        # ax.set_yscale('log')
+        # ax.set_xscale('log')
+        
+        print(index, s)
 
-        if 'Beas' in b:
-            ax.scatter(qx,qy,c='blue')
-        elif 'Sutlej' in b:
-            ax.scatter(qx,qy,c='green')
-        elif 'Yamuna' in b:
-            ax.scatter(qx,qy,c='red')
-        else:
-            ax.scatter(qx,qy,c='orange')
-            
-        ax.plot([0,1000],[0,1000],'k')
-        ax.set_title(sorted_labels[index])# + ' in ' + b[0])
-        ax.set_ylim(0,250)
-        ax.set_xlim(0,250)
+        # if 'Beas' in b:
+        #     ax.scatter(q_sim,q_obs,c='blue')
+        # elif 'Sutlej' in b:
+        #     ax.scatter(q_sim,q_obs,c='green')
+        # elif 'Yamuna' in b:
+        #     ax.scatter(q_sim,q_obs,c='red')
+        # else:
+        #     ax.scatter(q_sim,q_obs,c='orange')
+
+        m = max(max(q_obs), max(q_sim), max(q_mod))
+          
+        ax.plot([0,m],[0,m],c='lightgrey')
+        ax.set_title(sorted_labels[index], size=10)# + ' in ' + b[0])
+
+        ax.set_ylim(0,m)
+        ax.set_xlim(0,m)
         
         ax.text(0.02, 0.4, "Obs", fontweight="book", transform=ax.transAxes, rotation='vertical')
         ax.text(0.4, 0.02, "Sim", fontweight="book", transform=ax.transAxes)
-        
-        ax.text(0.02, 0.85, "250", fontweight="ultralight", color='grey', transform=ax.transAxes, rotation='vertical')
-        ax.text(0.85, 0.02, "250", fontweight="ultralight", color='grey', transform=ax.transAxes)
+
+        ax.text(0.02, 0.85, f"{m:.0f}", fontweight="ultralight", color='grey', transform=ax.transAxes, rotation='vertical')
+        ax.text(0.85, 0.02, f"{m:.0f}", fontweight="ultralight", color='grey', transform=ax.transAxes)
         
     #     ax.set_yticks([]) if not(index%n_cols==0) else ax.set_yticks([0,250])
-        ax.set_yticks([])
-        ax.set_xticks([])
+        # ax.set_yticks([])
+        # ax.set_xticks([])
     #     ax.set_ylabel('Observed (mm/day)') if index==0 else None
     #     ax.set_xlabel('Simulated (mm/day)') if index==0 else None
         
