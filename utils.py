@@ -358,7 +358,7 @@ def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : 
         beta = df['beta']
         perc = df[series] 
 
-        if perc > pi:
+        if perc > pi:   
             quantile = (perc - pi)/(1 - pi)
             return stats.gamma.ppf(quantile, a=alpha, loc=0, scale=1/beta)
         else:

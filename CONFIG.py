@@ -32,7 +32,7 @@ DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norri
               'COMBINED' : '../../data/norris/enriched_obs/enriched_combined_obs_norris_ready.pkl'}
 
 
-TRAIN_PATH = DATA_PATHS['COMBINED']
+TRAIN_PATH = DATA_PATHS['WAPDA']
 
 # Features 
 predictors = [ 
@@ -43,14 +43,14 @@ predictors = [
                 'Y',
                 #'aspect',
                 #'slope',
-                # 'year',
+                'year',
                 'CWV_norris', 
                 'RH2_norris', 'RH500_norris', 
                 'T2_norris', 'T2max_norris', 'T2min_norris', 'Td2_norris', 
                 'precip_norris', 'rain_norris', 
                 'u500_norris', 'v500_norris',
                 'u10_norris', 'v10_norris', 
-                # 'cape_norris', 
+                'cape_norris', 
                 'u250_norris','v250_norris', 
                 'w250_norris', 'w500_norris', 
                 'hgt_norris', 'lu_index_norris', 
@@ -58,6 +58,8 @@ predictors = [
               ]
 
 predictand = ['Prec']
+
+sort_by_quantile = True
 
 # Multirun parameters
 params = OrderedDict(
@@ -69,13 +71,13 @@ params = OrderedDict(
     ,model_arch = [
                    ('VGLM',[]),
                    ('MLP',[10]),
-                   ('SimpleRNN',[10]),
+                  #  ('SimpleRNN',[10]),
                    ('MLP',[50,50]),
-                   ('SimpleRNN',[50,50])
+                  #  ('SimpleRNN',[50,50])
                   ]
 )
 
-epochs = 10
+epochs = 20
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']

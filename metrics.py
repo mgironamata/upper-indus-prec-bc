@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import scipy 
 import CRPS.CRPS as pscore
+import properscoring as ps
 
 
 __all__ = [ 
@@ -54,3 +55,25 @@ def CRPS_apply(df : pd.DataFrame, x : np.array = None, observation_series: str =
         x = scipy.stats.gamma.ppf(q=np.linspace(0,1,100)[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
     crps,fcrps,acrps = pscore(x, df[observation_series]).compute()
     return crps
+
+def CRPS(df : pd.DataFrame, ensemble = None, num_quantiles : int = 100, limit = None):
+    
+    for idx, q in enumerate(np.linspace(0,1,num_quantiles+2)[1:-1]):
+        if ensemble is None: 
+            a = scipy.stats.gamma.ppf(q=q, a=df['alpha'], loc=0, scale=1/df['beta'])
+            if limit is not None:
+                a = np.where(a>limit,limit,a)
+        else:  
+            c = np.quantile(ensemble, q)
+            if limit is not None:
+                c = c.where(c>limit, limit, c)
+            a = np.tile(c, len(ensemble))
+        
+        if idx == 0: 
+            b = a.reshape([-1,1])
+        else: 
+            b = np.concatenate([b,a.reshape([-1,1])], axis=1)
+    
+    obs = df['Prec'].to_numpy()
+
+    return ps.crps_ensemble(observations=obs, forecasts=b)

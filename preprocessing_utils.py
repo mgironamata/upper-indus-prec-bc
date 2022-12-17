@@ -54,7 +54,6 @@ class DataPreprocessing():
         self.split_by = split_by
 
         
-
         # Create station dataframe
         self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = filter_incomplete_years)
         self.station_dict = self.create_station_dict()
@@ -182,7 +181,7 @@ class DataPreprocessing():
         # test2_tensor_y = torch.Tensor(data['Y_test2'][:,:d])
         # test2_dataset = TensorDataset(test2_tensor_x,test2_tensor_y) # create your dataset
 
-def sort_by_quantile(st, sort_by = 'wrf_prcp'):
+def sort_by_quantile(st, sort_by = 'precip_norris'):
     """Re-arrange dataframe of station data so that model simulations and observations match 
     based on quantiles, for each station separately
     
