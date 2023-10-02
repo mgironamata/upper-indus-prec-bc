@@ -20,7 +20,7 @@ from metrics import *
 from models import MLP, SimpleRNN, VGLM
 from experiment import *
 from runmanager import *
-# from plot_utils import *
+# from plot_utils import plot_losses
 # from preprocessing_utils import *
 
 import CONFIG
@@ -873,8 +873,9 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
     return concat_test_predictors
 
 def multirun(data, predictors, params, epochs, split_by='station', 
-             sequential_samples=False, sample_threshold=None, n_samples=10, 
-             best_by='val', use_device=device, load_run=None, feature_attribution=True, save_to = '/data/hpcdata/users/marron31/', experiment_label = None):
+             sequential_samples=False, sample_threshold=None, n_samples=10, draw_samples=True,
+             best_by='val', use_device=device, load_run=None, feature_attribution=True, 
+             save_to = '/data/hpcdata/users/marron31/', experiment_label = None, show_loss_plot = False):
 
     m = RunManager()
     predictions={}
@@ -885,7 +886,6 @@ def multirun(data, predictors, params, epochs, split_by='station',
     else:
         random_label = experiment_label
 
-
     for run in RunBuilder.get_runs(params):
 
         model_type = run.model_arch[0]
@@ -895,6 +895,11 @@ def multirun(data, predictors, params, epochs, split_by='station',
         k = run.k
         batch_size = run.batch_size
         lr = run.lr
+
+        if hasattr(run, 'random_noise'):
+            random_noise = run.random_noise
+        else:
+            random_noise = 0
 
         d = len(predictors)
         
@@ -911,10 +916,12 @@ def multirun(data, predictors, params, epochs, split_by='station',
         test_tensor_s = torch.tensor(data.data[f'S_test_{k}'][:,:d],device='cpu', dtype=torch.float32) # transform to torch tensor
 
         if model_type in ["VGLM","MLP"]:
+            sequential_samples = False
             train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
             val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
             test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
         elif model_type == "SimpleRNN":
+            sequential_samples = True
             train_dataset = CustomSimpleRNNDataset(train_tensor_x,train_tensor_y,train_tensor_s) # create training dataset
             val_dataset = CustomSimpleRNNDataset(val_tensor_x,val_tensor_y,val_tensor_s) # create test dataset
             test_dataset = CustomSimpleRNNDataset(test_tensor_x,test_tensor_y,test_tensor_s) # create test dataset
@@ -923,7 +930,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
             network = MLP(in_channels=d, 
                 hidden_channels=hidden_channels, 
                 likelihood_fn=likelihood_fn,
-                dropout_rate=dropout_rate)
+                dropout_rate=dropout_rate,
+                random_noise=random_noise)
         elif model_type == "VGLM":
             network = VGLM(in_channels=d, 
                           likelihood_fn=likelihood_fn)  
@@ -959,7 +967,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
                 load_root = generate_root(experiment_name, 
                                             show_timestamp = False, 
                                             show_label = True, 
-                                            label_name = load_run)
+                                            label_name = random_label)
             
             MASTER_ROOT = f"{save_to}_experiments/{random_label}/"
             if not(os.path.isdir(MASTER_ROOT)):
@@ -1011,9 +1019,12 @@ def multirun(data, predictors, params, epochs, split_by='station',
             load_best = True
             if load_best:
                 network.load_state_dict(torch.load(os.path.join(wd.root,'model_best.pth.tar')))
+            
+            # if show_loss_plot: plot_losses(train_losses, val_losses, test_losses)
 
         elif load_run is not None:
             network.load_state_dict(torch.load(os.path.join(load_root,'model_best.pth.tar')))
+        
         # if sequential_predictions:
         #     predictands = make_sequential_predictions(model=network, test_dataset=test_dataset, x_mean=data.x_mean, x_std=data.x_std)
         # else:
@@ -1036,15 +1047,15 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                 model=network,
                                 x_mean=data.x_mean,
                                 x_std=data.x_std,
-                                confidence_intervals=True,
-                                draw_samples=True,
+                                confidence_intervals=False,
+                                draw_samples=draw_samples,
                                 n_samples=n_samples,
                                 sequential_samples = sequential_samples, 
                                 threshold=sample_threshold,
                                 model_type=model_type
                                 )
         
-        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}'
+        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
         print(key)
         
         if not(key in predictions.keys()):
