@@ -653,11 +653,13 @@ def plot_qq_for_all_stations(df : pd.DataFrame, n_rows : int = 9, n_cols : int =
         qs = np.arange(0,1,0.01)[1:]                
         q_sim = np.quantile(dfs[sim], qs)
         q_obs = np.quantile(dfs[obs], qs)
+        q_mod = np.quantile(dfs[mod], qs)
         
-        q_mod = []
-        for q in qs:
-            y = np.nan_to_num((q > dfs['pi'].to_numpy()).astype('int') * stats.gamma.ppf(q=(q - dfs['pi'])/(1-dfs['pi']), a=dfs['alpha'].to_numpy(), loc=0, scale=1/dfs['beta'].to_numpy())).mean()
-            q_mod.append(y)
+        # q_mod = []
+        # for q in qs:
+        #     y = np.nan_to_num((q > dfs['pi'].to_numpy()).astype('int') * stats.gamma.ppf(q=(q - dfs['pi'])/(1-dfs['pi']), a=dfs['alpha'].to_numpy(), loc=0, scale=1/dfs['beta'].to_numpy())).mean()
+        #     q_mod.append(y)
+
         # q_sim = np.sort(df[df['Station']==s][sim])
         # q_obs = np.sort(df[df['Station']==s][obs])
         
@@ -677,7 +679,7 @@ def plot_qq_for_all_stations(df : pd.DataFrame, n_rows : int = 9, n_cols : int =
         # ax.set_yscale('log')
         # ax.set_xscale('log')
         
-        print(index, s)
+        # print(index, s)
 
         # if 'Beas' in b:
         #     ax.scatter(q_sim,q_obs,c='blue')
@@ -713,3 +715,5 @@ def plot_qq_for_all_stations(df : pd.DataFrame, n_rows : int = 9, n_cols : int =
     # plt.savefig('figures/qqplot-per-station.png', dpi=300)
 
     plt.show()
+
+    print('done')

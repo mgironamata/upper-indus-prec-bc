@@ -4,8 +4,8 @@ from pyproj import CRS
 
 
 __all__ = [
-            mosaic_tiles, 
-            mask_raster
+            'mosaic_tiles', 
+            'mask_raster'
         ]
 
 def mosaic_tiles(dirpath, search_criteria, out_fp, epsg=4326):

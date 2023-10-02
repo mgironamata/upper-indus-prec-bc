@@ -31,8 +31,13 @@ DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norri
               'SUSHIWAT' : '../../data/norris/enriched_obs/enriched_sushiwat_obs_norris_ready.pkl',
               'COMBINED' : '../../data/norris/enriched_obs/enriched_combined_obs_norris_ready.pkl'}
 
+REGION = 'SUSHIWAT'
 
-TRAIN_PATH = DATA_PATHS['WAPDA']
+RUN_NAME = f'{REGION}_BGMM_21_AUG_2023_EXP_4'
+
+TRAIN_PATH = DATA_PATHS[REGION]
+
+K_FOLD = 10
 
 # Features 
 predictors = [ 
@@ -41,8 +46,8 @@ predictors = [
                 'Z',
                 'X',
                 'Y',
-                #'aspect',
-                #'slope',
+                # 'aspect',
+                # 'slope',
                 'year',
                 'CWV_norris', 
                 'RH2_norris', 'RH500_norris', 
@@ -59,25 +64,28 @@ predictors = [
 
 predictand = ['Prec']
 
-sort_by_quantile = True
+sort_by_quantile = False
+
+split_by = 'station' # by "region" or "station"
 
 # Multirun parameters
 params = OrderedDict(
-    lr = [0.005]
-    ,batch_size = [128] #, 32]
-    ,likelihood_fn = ['bgmm'] # 'bernoulli_loggaussian', 'b2gmm']
+    lr = [0.001]
+    ,batch_size = [32]
+    ,likelihood_fn = ['bgmm'] #,'bernoulli_loggaussian', 'b2gmm']
     ,dropout_rate = [0]
-    ,k = list(range(10))
+    ,random_noise = [0]
+    ,k = list(range(K_FOLD)) 
     ,model_arch = [
                    ('VGLM',[]),
                    ('MLP',[10]),
-                  #  ('SimpleRNN',[10]),
+                   # ('SimpleRNN',[10]),
                    ('MLP',[50,50]),
-                  #  ('SimpleRNN',[50,50])
+                   # ('SimpleRNN',[50,50])
                   ]
 )
 
-epochs = 20
+epochs = 10
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']

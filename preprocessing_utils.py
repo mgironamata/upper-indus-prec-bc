@@ -2,21 +2,23 @@ import numpy as np
 import pandas as pd
 import os, glob
 from sklearn.model_selection import KFold
-import random, pickle 
+import random, pickle
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader 
 
 import pdb
 
+random.seed(42)
+
 __all__ = ['import_dataframe',
-           'drop_df_NaNs',
+           '_drop_dataframe_nan_values',
+           '_filter_complete_station_years',
            'clip_time_period',
            'list_bc_stations',
            'log_transform',
            'dry_days_binomial',
            'disjunctive_union_lists',
-           'filter_complete_station_years',
            'FilterByList',
            'sort_by_quantile',
            'add_year_month_season',
@@ -59,14 +61,17 @@ class DataPreprocessing():
         self.station_dict = self.create_station_dict()
         self.st['StationNum'] = pd.factorize(self.st.Station)[0]
 
-    def split_stations(self):
+    def split_stations(self, sort_by_elev = True):
 
-        sort_by_elev = True
-        if sort_by_elev:
+        self.sort_by_elev = sort_by_elev
+
+        if self.sort_by_elev:
             self.st = self.st.sort_values(by='Z', ascending=True)
 
         if self.split_bias_corrected_only:
-            
+            if self.sort_by_elev:
+                raise ValueError("sort_by_elev must be False if split_bias_corrected_only is True")
+
             #  List bias-corrected and non-bias-corrected stations
             self.bc_stations = list_bc_stations(self.st)
             self.non_bc_stations = disjunctive_union_lists(self.st['Station'].unique(), self.bc_stations)
@@ -75,6 +80,7 @@ class DataPreprocessing():
             self.st_names = list(set(self.bc_stations) & set(self.st['Station'].unique()))
 
         else:
+
             # self.st_names = self.st['Station'][self.st['set']=='train'].unique()
             self.bc_stations = self.st['Station'].unique()
             self.non_bc_stations = []
@@ -101,11 +107,33 @@ class DataPreprocessing():
             self.st_names_dict['train'] += self.non_bc_stations
 
         # print("%s stations used for training, %s used for validation, and %s used testing" % (len(self.st_names_dict['train']), len(self.st_names_dict['val']), len(self.st_names_dict['test'])))
-
-        self.split_dict = create_cv_held_out_sets(st_names = self.st_names, 
+        
+        if self.split_by == 'region':
+            if self.sort_by_elev:
+                raise ValueError("sort_by_elev must be False if split_by is region")
+            self.split_dict = self.split_dict_by_region()
+            
+        else:
+            self.split_dict = create_cv_held_out_sets(st_names = self.st_names, 
                                                   non_bc_st_names = self.non_bc_stations,
                                                   split_by = self.split_by, 
-                                                  include_non_bc_stations = self.include_non_bc_stations)
+                                                  include_non_bc_stations = self.include_non_bc_stations,
+                                                  sort_by_elevation = self.sort_by_elev)
+
+    def split_dict_by_region(self):
+        self.regions = self.st.Region.unique()
+
+        split_dict = {}
+
+        for i,r in enumerate(self.regions):
+            train_val_split = self.st[self.st['Region']!=r].Station.unique()
+            random.shuffle(train_val_split, )
+            test_split = self.st[self.st['Region']==r].Station.unique()
+            train_split = train_val_split[:round(len(train_val_split)*0.8)]
+            val_split = train_val_split[round(len(train_val_split)*0.8):]
+            split_dict[f'k{i}'] = {"train":train_split, "val":val_split, "test":test_split}
+        
+        return split_dict
 
     def create_station_dict(self):
         self.station_dict = {}
@@ -143,7 +171,6 @@ class DataPreprocessing():
         self.years_dict['val'] = self.years_list[:10] #list(range(2004,2006))
         self.years_dict['test'] = self.years_list[10:] #list(range(2006,2008))
         
-        
         self.d = len(predictors) # define number of input dimensions
 
         self.splits = ['train', 'val', 'test']
@@ -152,7 +179,7 @@ class DataPreprocessing():
 
         for i in self.splits:
             
-            if self.split_by=='station':
+            if (self.split_by=='station') or (self.split_by=='region'):
                 self.data[f'X_{i}'] = (self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
                 self.data[f'Y_{i}'] = self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][predictand].to_numpy()
                 self.data[f'S_{i}'] = self.st[self.st['Station'].isin(self.st_names_dict[f'{i}'])][['StationNum']].to_numpy()
@@ -160,6 +187,7 @@ class DataPreprocessing():
             elif self.split_by=='year':
                 self.data[f'X_{i}'] = (self.st[self.st['year'].isin(self.years_dict[f'{i}'])][predictors].to_numpy() - self.x_mean) / self.x_std
                 self.data[f'Y_{i}'] = self.st[self.st['year'].isin(self.years_dict[f'{i}'])][predictand].to_numpy()
+                self.data[f'S_{i}'] = self.st[self.st['year'].isin(self.years_dict[f'{i}'])]['StationNum'].to_numpy()
                 
         self.train_dataset = create_dataset(data=self.data,split='train',d=self.d)
         self.val_dataset = create_dataset(data=self.data,split='val',d=self.d)
@@ -224,7 +252,7 @@ def import_dataframe(path, verbose=False):
     
     return df
 
-def drop_df_NaNs(df, series='Prec', verbose=False):
+def _drop_dataframe_nan_values(df, series='Prec', verbose=False):
     """ Replaces non-numeric values from Dataframe series 
     to NaN values, so that it can be read as float.
 
@@ -269,7 +297,7 @@ def add_year_month_season(st):
     st['season'] = st.apply(season_apply, axis=1) 
     return st
 
-def filter_complete_station_years(df):
+def _filter_complete_station_years(df):
     grouped_df = df.groupby(['Station','year']).count().reset_index()
     pairs = list(grouped_df[grouped_df['Prec']>=365][['Station','year']].apply(tuple,1))
     df = df[df[['Station','year']].apply(tuple, 1).isin(pairs)]
@@ -363,12 +391,15 @@ def add_yesterday_observation(st):
     st.dropna(inplace=True)
     return st
 
-def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station', include_non_bc_stations = True):
+def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station', include_non_bc_stations = True, sort_by_elevation = False):
 
     if split_by == 'station':
         
         split_dict = {}
-        kf = KFold(n_splits=10,shuffle=True)
+        if sort_by_elevation:
+            kf = KFold(n_splits=10,shuffle=False)
+        else:
+            kf = KFold(n_splits=10,shuffle=True, random_state=42)
         #kf.get_n_splits(st_names)
 
         for i, (train_index, test_index) in enumerate(kf.split(st_names)):
@@ -381,7 +412,7 @@ def create_cv_held_out_sets(st_names, non_bc_st_names = [], split_by = 'station'
     elif split_by == 'year':
         
         split_dict = {}
-        kf = KFold(n_splits=5, shuffle=True)
+        kf = KFold(n_splits=5, shuffle=True, random_state=42)
         years=np.array(range(1998,2008))
 
         for i, (train_index, test_index) in enumerate(kf.split(years)):
@@ -400,10 +431,11 @@ def calculate_doy_columns(st):
 
     return st
 
-def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday: str = True, basin_filter = None, filter_incomplete_years = True):
+def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterday: str = True, 
+                             basin_filter = None, filter_incomplete_years = True):
 
     st = (import_dataframe(TRAIN_PATH)
-        .pipe(drop_df_NaNs, series='Prec')
+        .pipe(_drop_dataframe_nan_values, series='Prec')
         .pipe(clip_time_period, start, end)
         .pipe(add_year_month_season)
         .pipe(calculate_doy_columns)
@@ -413,7 +445,7 @@ def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterda
     if add_yesterday: st = add_yesterday_observation(st)
 
     # Filter incomplete years
-    if filter_incomplete_years: st = filter_complete_station_years(st)
+    if filter_incomplete_years: st = _filter_complete_station_years(st)
 
     # Filter by basin
     if basin_filter is not None: st = st[st['Basin']==basin_filter]
@@ -421,7 +453,7 @@ def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterda
     # st['set'] = "train" 
 
     # st_val = (import_dataframe(TEST_PATH) # Import dataframe
-    #     .pipe(drop_df_NaNs, series='Prec') # Drop NaNs
+    #     .pipe(_drop_dataframe_nan_values, series='Prec') # Drop NaNs
     #     .pipe(clip_time_period, start, end) # Clip data temporally 
     # )
 
@@ -443,37 +475,45 @@ def create_input_data(st, predictors, predictand, split_dict, split_by='station'
 
     for i in range(len(split_dict)):
 
-        if split_by=='station':
+        if (split_by=='station') or (split_by=='region'):
             
             data[f'set_train_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['train'])]
             data[f'set_val_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['val'])]
             data[f'set_test_{i}'] = st[st['Station'].isin(split_dict[f'k{i}']['test'])]
-                                    
-            if sort_by_quantile_flag:
-                data[f'set_train_{i}'] = sort_by_quantile(data[f'set_train_{i}'])
-                data[f'set_val_{i}'] = sort_by_quantile(data[f'set_val_{i}'])
-                                    
-            data[f'X_train_{i}'] = (data[f'set_train_{i}'][predictors].to_numpy() - x_mean) / x_std
-            data[f'X_val_{i}'] = (data[f'set_val_{i}'][predictors].to_numpy() - x_mean) / x_std
-            data[f'X_test_{i}'] = (data[f'set_test_{i}'][predictors].to_numpy() - x_mean) / x_std
-
-            data[f'Y_train_{i}'] = data[f'set_train_{i}'][predictand].to_numpy()
-            data[f'Y_val_{i}'] = data[f'set_val_{i}'][predictand].to_numpy()
-            data[f'Y_test_{i}'] = data[f'set_test_{i}'][predictand].to_numpy()
-
-            data[f'S_train_{i}'] = data[f'set_train_{i}'][['StationNum']].to_numpy()
-            data[f'S_val_{i}'] = data[f'set_val_{i}'][['StationNum']].to_numpy()
-            data[f'S_test_{i}'] = data[f'set_test_{i}'][['StationNum']].to_numpy()
 
         elif split_by=='year':
-        
-            data[f'X_train_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['train'])][predictors].to_numpy() - x_mean) / x_std
-            data[f'X_val_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['val'])][predictors].to_numpy() - x_mean) / x_std
-            data[f'X_test_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['test'])][predictors].to_numpy() - x_mean) / x_std
 
-            data[f'Y_train_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['train'])][predictand].to_numpy()
-            data[f'Y_val_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['val'])][predictand].to_numpy()
-            data[f'Y_test_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['test'])][predictand].to_numpy()
+            data[f'set_train_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['train'])]
+            data[f'set_val_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['val'])]
+            data[f'set_test_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['test'])]
+
+        if sort_by_quantile_flag:
+            data[f'set_train_{i}'] = sort_by_quantile(data[f'set_train_{i}'])
+            data[f'set_val_{i}'] = sort_by_quantile(data[f'set_val_{i}'])
+                       
+        data[f'X_train_{i}'] = (data[f'set_train_{i}'][predictors].to_numpy() - x_mean) / x_std
+        data[f'X_val_{i}'] = (data[f'set_val_{i}'][predictors].to_numpy() - x_mean) / x_std
+        data[f'X_test_{i}'] = (data[f'set_test_{i}'][predictors].to_numpy() - x_mean) / x_std
+
+        data[f'Y_train_{i}'] = data[f'set_train_{i}'][predictand].to_numpy()
+        data[f'Y_val_{i}'] = data[f'set_val_{i}'][predictand].to_numpy()
+        data[f'Y_test_{i}'] = data[f'set_test_{i}'][predictand].to_numpy()
+
+        data[f'S_train_{i}'] = data[f'set_train_{i}'][['StationNum']].to_numpy()
+        data[f'S_val_{i}'] = data[f'set_val_{i}'][['StationNum']].to_numpy()
+        data[f'S_test_{i}'] = data[f'set_test_{i}'][['StationNum']].to_numpy()        
+        
+            # data[f'X_train_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['train'])][predictors].to_numpy() - x_mean) / x_std
+            # data[f'X_val_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['val'])][predictors].to_numpy() - x_mean) / x_std
+            # data[f'X_test_{i}'] = (st[st['year'].isin(split_dict[f'k{i}']['test'])][predictors].to_numpy() - x_mean) / x_std
+
+            # data[f'Y_train_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['train'])][predictand].to_numpy()
+            # data[f'Y_val_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['val'])][predictand].to_numpy()
+            # data[f'Y_test_{i}'] = st[st['year'].isin(split_dict[f'k{i}']['test'])][predictand].to_numpy()
+
+            # data[f'S_train_{i}'] = data[f'set_train_{i}'][['StationNum']].to_numpy()
+            # data[f'S_val_{i}'] = data[f'set_val_{i}'][['StationNum']].to_numpy()
+            # data[f'S_test_{i}'] = data[f'set_test_{i}'][['StationNum']].to_numpy()
 
     # data['X_test'] = (st[st['Station'].isin(st_names_dict['test'])][predictors].to_numpy() - x_mean) / x_std
     # data['Y_test'] = st[st['Station'].isin(st_names_dict['test'])][predictand].to_numpy()

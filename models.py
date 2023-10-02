@@ -129,7 +129,7 @@ class MLP(nn.Module):
         
     """
 
-    def __init__(self, in_channels, hidden_channels=[10], likelihood_fn='bgmm', dropout_rate=0.25):
+    def __init__(self, in_channels, hidden_channels=[10], likelihood_fn='bgmm', dropout_rate=0.25, random_noise=0.0):
 
         super(MLP, self).__init__()
         
@@ -137,6 +137,7 @@ class MLP(nn.Module):
         self.hidden_channels = hidden_channels
         self.likelihood = likelihood_fn
         self.dropout_rate = dropout_rate
+        self.random_noise = random_noise
         
         self.out_channels = _define_out_channels(self)
 
@@ -156,6 +157,9 @@ class MLP(nn.Module):
         self.out = nn.Linear(self.hidden_channels[-1], self.out_channels)  
 
     def forward(self, x):
+        
+        # add random noise to input
+        x = x + torch.randn_like(x)*self.random_noise
         
         for layer in self.hidden[:]:
             x = self.dropout(x)
@@ -206,7 +210,7 @@ class SimpleRNN(nn.Module):
 
     def forward(self, x):
 
-        # x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
+        x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
         # input (x) shape should be: batch size, seq length, channels
         z = self.rnn(x)[0] # [seq_length, batch_size = 1, output_channels]
         t = z.reshape(z.shape[0]*z.shape[1], z.shape[2]) # [seq_length, output_channels]

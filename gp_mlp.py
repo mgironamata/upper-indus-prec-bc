@@ -23,7 +23,7 @@ from preprocessing_utils import *
 from elbo import *
 
 # from shapely.geometry import box, mapping
-import descartes
+# import descartes
 
 from sklearn.metrics import mean_squared_error as mse
 from sklearn.model_selection import KFold

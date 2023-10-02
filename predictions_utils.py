@@ -3,6 +3,48 @@ from metrics import CRPS_apply, CRPS
 from tqdm.notebook import tqdm
 tqdm.pandas(desc="my bar!")
 
+__all__ = ['print_CRPS_results',
+           'naive_bias_correction',
+           'calculate_variance_per_station',
+           'compute_CRPS']
+
+def calculate_variance_per_station(df):
+
+    df['std'] = -999
+
+    stations = df.Station.unique()
+
+    for s in stations:
+        df_s = df[df['Station']==s].copy()
+        df_s['std'] = df_s['Prec'].std()
+        if s == stations[0]:
+            dfc = df_s
+        else:
+            dfc = pd.concat([dfc, df_s])
+    
+    return dfc
+
+def naive_bias_correction(df, ignore_zeros = False):
+    df['naive_bc'] = -999
+
+    k_fold = df.k_fold.unique()
+
+    for k in k_fold:
+        dfa = df[df['k_fold']!=k].copy()
+        dfb = df[df['k_fold']==k].copy()
+        
+        if ignore_zeros:
+            dfa = dfa[dfa['Prec']>0]
+
+        factor = dfa['Prec'].mean()/dfa['precip_norris'].mean()
+        dfb['naive_bc'] = dfb['precip_norris'] * factor
+        
+        if k == k_fold[0]:
+            dfc = dfb
+        else:
+            dfc = pd.concat([dfc, dfb])
+
+    return dfc
 
 def print_CRPS_results(predictions):
     for idx, (k,v) in enumerate(predictions.items()):
@@ -15,7 +57,6 @@ def print_CRPS_results(predictions):
         
         print(f"CRPS_mod for {k}: {p['CRPS_mod'].mean():.3f}")
         
-
 def compute_CRPS(predictions, per_station = False, limit = None): 
     for idx, (k,v) in enumerate(predictions.items()):
         
@@ -44,6 +85,7 @@ def compute_CRPS(predictions, per_station = False, limit = None):
                 print(f"CRPS_mod for {k}: {p_s['CRPS_mod'].mean():.3f}")
                 print("--------------------")
      
+        
         else:
             if idx == 0:
                 x_clim = p['Prec'].to_numpy()
