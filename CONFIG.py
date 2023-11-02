@@ -33,7 +33,7 @@ DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norri
 
 REGION = 'SUSHIWAT'
 
-RUN_NAME = f'{REGION}_BGMM_21_AUG_2023_EXP_4'
+RUN_NAME = f'{REGION}_BGMM_09_OCT_2023_EXP_1'
 
 TRAIN_PATH = DATA_PATHS[REGION]
 
@@ -77,11 +77,11 @@ params = OrderedDict(
     ,random_noise = [0]
     ,k = list(range(K_FOLD)) 
     ,model_arch = [
-                   ('VGLM',[]),
-                   ('MLP',[10]),
-                   # ('SimpleRNN',[10]),
-                   ('MLP',[50,50]),
-                   # ('SimpleRNN',[50,50])
+                  #  ('VGLM',[]),
+                  #  ('MLP',[10]),
+                   ('SimpleRNN',[10]),
+                  #  ('MLP',[50,50]),
+                  #   ('SimpleRNN',[50,50])
                   ]
 )
 
