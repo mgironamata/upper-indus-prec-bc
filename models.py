@@ -210,7 +210,8 @@ class SimpleRNN(nn.Module):
 
     def forward(self, x):
 
-        x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
+        if len(x.shape)<3:
+            x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
         # input (x) shape should be: batch size, seq length, channels
         z = self.rnn(x)[0] # [seq_length, batch_size = 1, output_channels]
         t = z.reshape(z.shape[0]*z.shape[1], z.shape[2]) # [seq_length, output_channels]

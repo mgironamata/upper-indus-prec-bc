@@ -4,7 +4,6 @@ import scipy
 import CRPS.CRPS as pscore
 import properscoring as ps
 
-
 __all__ = [ 
             'squared_error',
             'absolute_error',
@@ -12,7 +11,8 @@ __all__ = [
             'SMAPE',
             'BS',
             'QS',
-            'CRPS_apply'
+            'CRPS_apply',
+            'ROC'
           ]
 
 def squared_error(x : pd.Series, y : pd.Series) -> pd.Series:
@@ -77,3 +77,52 @@ def CRPS(df : pd.DataFrame, ensemble = None, num_quantiles : int = 100, limit = 
     obs = df['Prec'].to_numpy()
 
     return ps.crps_ensemble(observations=obs, forecasts=b)
+
+def ROC(df : pd.DataFrame, obs : str, sim : str = None, wet_threshold : float = 0, quantile : float = 0.5, only_wet_days : bool = False):
+    "Returns hit rate and false alarm rate for a given quantile"
+
+    if only_wet_days:
+        df = df[df[obs]>0]
+
+    if sim is None:
+        q = (quantile - df['pi'])/(1-df['pi']) # probability of being in the wet class
+        q = q.where(q>0, 0) # make sure q is positive
+        p = scipy.stats.gamma.ppf(q=q, a=df['alpha'], loc=0, scale=1/df['beta']) # quantile of the gamma distribution
+        v = np.where(p>wet_threshold, 1, 0) # wet or dry
+    else:
+        v = np.array(df[sim]>wet_threshold)*1 # wet or dry for simulations
+
+    o = np.array(df[obs]>wet_threshold)*1 # wet or dry for observations
+    
+    TP = np.sum(np.logical_and(v==1, o==1)) # true positive
+    FP = np.sum(np.logical_and(v==1, o==0)) # false positive
+    TN = np.sum(np.logical_and(v==0, o==0)) # true negative
+    FN = np.sum(np.logical_and(v==0, o==1)) # false negative
+
+    hit_rate = TP / (TP + FN)
+    false_alarm_rate = FP / (FP + TN)
+
+    return hit_rate, false_alarm_rate
+
+def AUC(x, y):
+    """
+    Calculate the area under the ROC curve using trapezoidal integration.
+    
+    Parameters:
+    - x: Array of False Alarm Rates
+    - y: Array of Hit Rates
+    
+    Returns:
+    - Area under the ROC curve
+    """
+    # Sort the arrays by x values (just in case they aren't sorted)
+    sorted_indices = sorted(range(len(x)), key=lambda k: x[k])
+    x = [x[i] for i in sorted_indices]
+    y = [y[i] for i in sorted_indices]
+    
+    # Compute the AUC using trapezoidal integration
+    area = 0.0
+    for i in range(1, len(x)):
+        area += (x[i] - x[i-1]) * (y[i] + y[i-1]) / 2
+    
+    return area

@@ -100,7 +100,7 @@ class CustomSimpleRNNDataset(Dataset):
         # station = self.stations[idx : idx + self.seq_length]
         # assert np.all(station.numpy() == station.numpy()[0])
         
-        return predictor, predictand, 
+        return predictor, predictand
         
 
 def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
@@ -836,7 +836,7 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
                 prev_prediction = torch.tensor(0)
             else:
                 prev_prediction = torch.tensor(norm_sample)
-                
+              
             test_input = torch.cat([test_dataset.tensors[0][index,:-1], 
                                     prev_prediction.unsqueeze(0)])
             
