@@ -1,20 +1,20 @@
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
+# from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.data import DataLoader
 
 from IPython.display import display, clear_output
 import pandas as pd
 
-import time
-import json
-
 from collections import OrderedDict
 from collections import namedtuple
 from itertools import product
+
+import time
 import json
 
 __all__ =  ['RunBuilder', 
             'RunManager']
 
+# Run builder - creates a run from a dictionary of hyperparameters
 class RunBuilder():
     @staticmethod
     def get_runs(params):
@@ -27,7 +27,9 @@ class RunBuilder():
             
         return runs
 
+# Run manager - keeps track of the runs
 class RunManager():
+
     def __init__(self):
         
         self.epoch_count = 0
@@ -45,8 +47,9 @@ class RunManager():
         
         self.network = None
         self.loader = None
-        self.tb = None 
+        # self.tb = None 
         
+    # Begin run
     def begin_run(self, run, network, loader):
 
         self.run_start_time = time.time()
@@ -56,12 +59,14 @@ class RunManager():
 
         self.network = network
         self.loader = loader
-        self.tb = SummaryWriter(comment=f'-{run}')
+        # self.tb = SummaryWriter(comment=f'-{run}')
 
+    # End run
     def end_run(self):  
-        self.tb.close()
+        # self.tb.close()
         self.epoch_count = 0
 
+    # Begin epoch
     def begin_epoch(self):
         self.epoch_start_time = time.time()
 
@@ -72,6 +77,7 @@ class RunManager():
         self.epoch_decision_loss = 0
         self.epoch_num_correct = 0
 
+    # End epoch
     def end_epoch(self):
         epoch_duration = time.time() - self.epoch_start_time
         run_duration = time.time() - self.run_start_time
@@ -84,9 +90,9 @@ class RunManager():
         #self.tb.add_scalar('Loss', loss, self.epoch_count)
         #self.tb.add_scalar('Accuracy', accuracy, self.epoch_count)
 
-        for name, param in self.network.named_parameters():
-            self.tb.add_histogram(name, param, self.epoch_count)
-            self.tb.add_histogram(f'{name}.grad', param.grad, self.epoch_count)
+        # for name, param in self.network.named_parameters():
+            # self.tb.add_histogram(name, param, self.epoch_count)
+            # self.tb.add_histogram(f'{name}.grad', param.grad, self.epoch_count)
         
         results = OrderedDict()
         results["run"] = self.run_count
@@ -105,6 +111,7 @@ class RunManager():
         clear_output(wait=True)
         display(df)
 
+    
     def save(self, fileName):
         pd.DataFrame.from_dict(
             self.run_data, orient='columns'

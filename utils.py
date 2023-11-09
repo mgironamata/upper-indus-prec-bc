@@ -19,13 +19,11 @@ from likelihoods import *
 from metrics import *
 from models import MLP, SimpleRNN, VGLM
 from experiment import *
-from runmanager import *
+from runmanager import RunBuilder, RunManager
 # from plot_utils import plot_losses
 # from preprocessing_utils import *
 
 import CONFIG
-
-import pdb
 
 __all__ =  [
             'RunningAverage',
