@@ -24,17 +24,40 @@ device = 'cpu'
 start="1970-01-01"
 end="2015-12-31"
 
-# Data paths
+# Data paths\
 
+EXPERIMENT = 2 # 1, 2, 3 or 4
+
+REGION = 'ICIMOD'
+
+# Sort by elevation
+if EXPERIMENT == 4:
+  SORT_BY_ELEVATION = True
+else:
+  SORT_BY_ELEVATION = False
+
+# Split by region or station
+if EXPERIMENT == 3:
+  split_by = 'region'
+else:
+  split_by = 'station'
+
+# Use combined data or not
+if (EXPERIMENT == 2) or (EXPERIMENT == 3):
+  REGION = 'COMBINED'
+
+# Data paths
 DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norris_ready.pkl',
               'ICIMOD' : '../../data/norris/enriched_obs/enriched_langtang_obs_norris_ready.pkl',
               'SUSHIWAT' : '../../data/norris/enriched_obs/enriched_sushiwat_obs_norris_ready.pkl',
               'COMBINED' : '../../data/norris/enriched_obs/enriched_combined_obs_norris_ready.pkl'}
 
-REGION = 'SUSHIWAT'
+# Run name
+RUN_NAME = f'{REGION}_BGMM_09_NOV_2023_EXP_2'
 
-RUN_NAME = f'{REGION}_BGMM_09_OCT_2023_EXP_1'
+ADD_PREVIOUS_DAY = False
 
+# Input data path
 TRAIN_PATH = DATA_PATHS[REGION]
 
 K_FOLD = 10
@@ -62,11 +85,9 @@ predictors = [
                 # 'xland_norris'
               ]
 
-predictand = ['Prec']
+predictand = ['Prec']  
 
 sort_by_quantile = False
-
-split_by = 'station' # by "region" or "station"
 
 # Multirun parameters
 params = OrderedDict(
@@ -77,11 +98,11 @@ params = OrderedDict(
     ,random_noise = [0]
     ,k = list(range(K_FOLD)) 
     ,model_arch = [
-                  #  ('VGLM',[]),
-                  #  ('MLP',[10]),
+                   ('VGLM',[]),
+                   ('MLP',[10]),
                    ('SimpleRNN',[10]),
-                  #  ('MLP',[50,50]),
-                  #   ('SimpleRNN',[50,50])
+                   ('MLP',[50,50]),
+                   ('SimpleRNN',[50,50])
                   ]
 )
 
