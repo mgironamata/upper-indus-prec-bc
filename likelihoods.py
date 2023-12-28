@@ -9,19 +9,23 @@ import CONFIG
 
 __all__ = [ 'gaussian_logpdf',
             'gamma_logpdf',
-            'ggmm_logpdf',
-            'bgmm_logpdf',
+            'gamma_gamma_logpdf',
+            'gumbel_logpdf',
+            'halfnormal_logpdf',
+            'lognormal_logpdf',
+            'bernoulli_gamma_logpdf',
             'b2gmm_logpdf',
             'b2sgmm_logpdf',
             'bernoulli_gaussian_logpdf',
-            'bernoulli_loggaussian_logpdf',
+            'bernoulli_lognormal_logpdf',
             'bernoulli_gumbel_logpdf',
             'bernoulli_halfnormal_logpdf'
           ]
 
 device = CONFIG.device
 
-#  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 """Device to perform computations on."""
 
 def _reduce(logp, reduction):
@@ -37,7 +41,7 @@ def _reduce(logp, reduction):
         raise RuntimeError(f'Unknown reduction "{reduction}".')
 
 def gaussian_logpdf(obs, mu, sigma, reduction='mean'):
-    """Gamma mixture model log-density.
+    """Gaussian model log-density.
 
     Args:
         obs (torch.Tensor): Observed values.
@@ -80,7 +84,7 @@ def gamma_logpdf(obs, alpha, beta, reduction='mean'):
 
     return _reduce(logp, reduction)
 
-def ggmm_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
+def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     """Benroulli-Gamma-Gamma mexture model log-density.
 
     Args:
@@ -115,7 +119,7 @@ def ggmm_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
 
     return _reduce(logp, reduction)
 
-def bgmm_logpdf(obs, pi, alpha, beta, reduction='mean'):
+def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean'):
     """Benroulli-Gamma mixture model log-density.
 
     Args:
@@ -238,8 +242,8 @@ def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
 
     return _reduce(logp, reduction)
 
-def bernoulli_loggaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
-    """Benroulli-Gaussian mixture model log-density.
+def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean'):
+    """Benroulli-lognormal mixture model log-density.
 
     Args:
         obs (torch.Tensor): Inputs.
@@ -314,3 +318,67 @@ def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
     logp[b_mask] = torch.log(pi[b_mask])
 
     return _reduce(logp, reduction)
+
+def halfnormal_logpdf(obs, sigma, reduction='mean'):
+    """HalfNormal mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        sigma (torch.Tensor): 
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+    
+    obs = obs.flatten()
+
+    logp = HalfNormal(scale=sigma).log_prob(obs)
+
+    return _reduce(logp, reduction)
+
+def lognormal_logpdf(obs, mu, sigma, reduction='mean'):
+    """LogNormal mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        mu (torch.Tensor): 
+        sigma (torch.Tensor): 
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    b_mask = obs == 0
+
+    epsilon = 0.000001
+    obs[b_mask] = obs[b_mask] + epsilon
+
+    logp = Normal(loc=mu, scale=sigma).log_prob(torch.log(obs))
+
+    return _reduce(logp, reduction)
+
+def gumbel_logpdf(obs, mu, beta, reduction='mean'):
+    """Gumbel mixture model log-density.
+
+    Args:
+        obs (torch.Tensor): Inputs.
+        mu (torch.Tensor): 
+        beta (torch.Tensor): 
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns: 
+        torch.Tensor: Log-density.
+    """
+    
+    obs = obs.flatten()
+
+    logp = Gumbel(loc=mu, scale=beta).log_prob(obs)
+
+    return _reduce(logp, reduction)
+

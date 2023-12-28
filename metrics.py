@@ -4,6 +4,9 @@ import scipy
 import CRPS.CRPS as pscore
 import properscoring as ps
 
+from likelihoods import * 
+import torch
+
 __all__ = [ 
             'squared_error',
             'absolute_error',
@@ -12,7 +15,8 @@ __all__ = [
             'BS',
             'QS',
             'CRPS_apply',
-            'ROC'
+            'ROC',
+            'logprob'
           ]
 
 def squared_error(x : pd.Series, y : pd.Series) -> pd.Series:
@@ -49,11 +53,73 @@ def QS(df : pd.DataFrame, sim : str, obs : str, quantile : float):
     else:
         return quantile * d
 
-def CRPS_apply(df : pd.DataFrame, x : np.array = None, observation_series: str = 'Prec'):
-    if x is None:
-        # TO DO: INCLUDE OTHER PROBABILITY DISTRIBUTIONS OTHER THAT THE BERNOULLI GAMMA MIXTURE MODEL
+# def CRPS_apply(df : pd.DataFrame, x : np.array = None, observation_series: str = 'Prec'):
+#     if x is None:
+#         # TO DO: INCLUDE OTHER PROBABILITY DISTRIBUTIONS OTHER THAT THE BERNOULLI GAMMA MIXTURE MODEL
+#         x = scipy.stats.gamma.ppf(q=np.linspace(0,1,100)[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
+#     crps,fcrps,acrps = pscore(x, df[observation_series]).compute()
+#     return crps
+
+def CRPS_apply(df, dist='bgmm',mean='naive_bc',stdev=None):
+    
+    if dist=='bgmm':
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = scipy.stats.gamma.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
+        x = np.concatenate([x0,x1])
+
+    elif dist=='gaussian':
+        x = scipy.stats.norm.ppf(q=np.linspace(0,1,100)[1:-1], loc=df['mu'], scale=df['sigma'])
+    
+    elif dist=='gamma':
         x = scipy.stats.gamma.ppf(q=np.linspace(0,1,100)[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
-    crps,fcrps,acrps = pscore(x, df[observation_series]).compute()
+    
+    elif dist=='lognormal':
+        x = scipy.stats.lognorm.ppf(q=np.linspace(0,1,100)[1:-1], s=df['sigma'], loc=0, scale=np.exp(df['mu']))
+
+    elif dist=='gumbel':
+        x = scipy.stats.gumbel_r.ppf(q=np.linspace(0,1,100)[1:-1], loc=df['mu'], scale=df['beta'])
+    
+    elif dist=='halfnormal':
+        x = scipy.stats.halfnorm.ppf(q=np.linspace(0,1,100)[1:-1], loc=0, scale=df['sigma'])
+
+    elif dist=='bernoulli_gaussian':
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = scipy.stats.norm.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], loc=df['mu'], scale=df['sigma'])
+        x = np.concatenate([x0,x1])
+        
+    elif dist=='bernoulli_gumbel':
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = scipy.stats.gumbel_r.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], loc=df['mu'], scale=df['beta'])
+        x = np.concatenate([x0,x1])
+
+    elif dist=='bernoulli_halfnormal':
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = scipy.stats.halfnorm.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], loc=0, scale=df['sigma'])
+        x = np.concatenate([x0,x1])
+    
+    elif dist=='bernoulli_lognormal':
+        # NEED TO CHECK THIS
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = scipy.stats.lognorm.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], s=df['sigma'], loc=0, scale=np.exp(df['mu']))
+        x = np.concatenate([x0,x1])
+        
+    elif dist=='gaussian_from_deterministic':
+        if stdev is None:
+            raise ValueError('stdev must be specified for Gaussian distribution')
+        if mean is None:
+            raise ValueError('mean must be specified for Gaussian distribution')
+        
+        if isinstance(stdev, (int, float)): # if stdev is numeric, then it is a constant
+            df['stdev'] = stdev
+        elif isinstance(stdev, str): # if stdev is a string, then it is a column in the dataframe
+            df['stdev'] = df[stdev]
+        else:
+            raise ValueError('stdev must be numeric or a string')
+        
+        x = scipy.stats.norm.ppf(q=np.linspace(0,1,100)[1:-1], loc=df[mean], scale=df['stdev'])
+       
+    crps,fcrps,acrps = pscore(ensemble_members = x, observation = df['Prec']).compute()
+    
     return crps
 
 def CRPS(df : pd.DataFrame, ensemble = None, num_quantiles : int = 100, limit = None):
@@ -126,3 +192,67 @@ def AUC(x, y):
         area += (x[i] - x[i-1]) * (y[i] + y[i-1]) / 2
     
     return area
+
+def logprob(df : pd.DataFrame, dist : str =None, det_mu_series : str = None, det_sigma_series : str = None):
+    if dist == 'bgmm':
+        prec = torch.tensor(df['Prec'].values)
+        alpha = torch.tensor(df['alpha'].values)
+        beta = torch.tensor(df['beta'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_gamma_logpdf(obs=prec, alpha=alpha, beta=beta, pi=pi)
+    elif dist == 'gaussian':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        return gaussian_logpdf(obs=prec, mu=mu, sigma=sigma)
+    elif dist == 'gamma':
+        prec = torch.tensor(df['Prec'].values)
+        alpha = torch.tensor(df['alpha'].values)
+        beta = torch.tensor(df['beta'].values)
+        return gamma_logpdf(obs=prec, alpha=alpha, beta=beta)
+    elif dist == 'lognormal':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        return lognormal_logpdf(obs=prec, mu=mu, sigma=sigma)
+    elif dist == 'gumbel':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        beta = torch.tensor(df['beta'].values)
+        return gumbel_logpdf(obs=prec, mu=mu, beta=beta)
+    elif dist == 'halfnormal':
+        prec = torch.tensor(df['Prec'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        return halfnormal_logpdf(obs=prec, sigma=sigma)
+    elif dist == 'bernoulli_gaussian':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_gaussian_logpdf(obs=prec, mu=mu, sigma=sigma, pi=pi)
+    elif dist == 'bernoulli_gumbel':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        beta = torch.tensor(df['beta'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_gumbel_logpdf(obs=prec, mu=mu, beta=beta, pi=pi)
+    elif dist == 'bernoulli_halfnormal':
+        prec = torch.tensor(df['Prec'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_halfnormal_logpdf(obs=prec, sigma=sigma, pi=pi)
+    elif dist == 'bernoulli_lognormal':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df['mu'].values)
+        sigma = torch.tensor(df['sigma'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_lognormal_logpdf(obs=prec, mu=mu, sigma=sigma, pi=pi)
+    elif dist == 'gaussian_from_deterministic':
+        prec = torch.tensor(df['Prec'].values)
+        mu = torch.tensor(df[det_mu_series].values)
+        sigma = torch.tensor(df[det_sigma_series].values)
+        return gaussian_logpdf(obs=prec, mu=mu, sigma=sigma)
+    
+    else:
+        raise ValueError('Distribution not yet implemented')
+    

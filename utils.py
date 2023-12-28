@@ -2,6 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 from pandas._config import config
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 from math import prod
 import pickle
 import random, string
@@ -15,11 +18,14 @@ from captum.attr import IntegratedGradients, NoiseTunnel, DeepLift, GradientShap
 
 import scipy.stats as stats 
 
-from likelihoods import *
-from metrics import *
-from models import MLP, SimpleRNN, VGLM
+from likelihoods import * # {...}_logpdf() functions
+
+# from metrics import squared_error, absolute_error, error, SMAPE, BS, QS, CRPS_apply, ROC 
+
+from models import MLP, SimpleRNN, VGLM, LSTM, GRU
 from experiment import *
 from runmanager import RunBuilder, RunManager
+
 # from plot_utils import plot_losses
 # from preprocessing_utils import *
 
@@ -46,7 +52,23 @@ __all__ =  [
 device = CONFIG.device
 
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 """Device to perform computations on."""
+
+def _plot_losses(train_losses, val_losses, test_losses, model_type, likelihood_fn, k, random_label):
+
+    sns.set_theme(context='paper',style='white',font_scale=1.4)
+    
+    plt.figure(figsize=(5,5))
+    plt.plot(train_losses)
+    plt.plot(val_losses)
+    plt.plot(test_losses)
+    plt.legend(["training","validation","test"])
+    plt.xlabel('epoch')
+    plt.ylabel('negative log-likelihood')
+    plt.title(f"Minimim validation loss: {min(val_losses):.4f}")
+    # plt.savefig(f"../../figures/{CONFIG.RUN_NAME}_{model_type}_{likelihood_fn}_k_{k}_{random_label}_losses.png", dpi=300)
+    plt.show()
 
 class RunningAverage:
     """Maintain a running average."""
@@ -100,7 +122,6 @@ class CustomSimpleRNNDataset(Dataset):
         
         return predictor, predictand
         
-
 def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
     """Runs training for one epoch.
 
@@ -165,6 +186,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         train_losses.append(loss.item())
         
     model.eval()
+    
     with torch.no_grad():
         for _, (predictors, labels) in enumerate(valid_loader):
 
@@ -238,13 +260,22 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
         indices = mask.nonzero()
         ratio = len(indices)/len(predictands)
         loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
+
+    elif model.likelihood == 'lognormal':
+        loss = -lognormal_logpdf(labels, mu=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
+
+    elif model.likelihood == 'halfnormal':
+        loss = -halfnormal_logpdf(labels, sigma=predictands[:,0], reduction=reduction)
+
+    elif model.likelihood == 'gumbel':
+        loss = -gumbel_logpdf(labels, mu=predictands[:,0], beta=predictands[:,1], reduction=reduction)
     
     elif model.likelihood == 'ggmm':
-        loss = -ggmm_logpdf(labels, alpha1=predictands[:,0], alpha2=predictands[:,1], 
+        loss = -gamma_gamma_logpdf(labels, alpha1=predictands[:,0], alpha2=predictands[:,1], 
                              beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction)
 
     elif model.likelihood == 'bgmm':
-        loss = -bgmm_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction)
     
     elif model.likelihood == 'b2gmm':
         loss = -b2gmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
@@ -257,8 +288,8 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
     elif model.likelihood == 'bernoulli_gaussian':
         loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction='mean')
     
-    elif model.likelihood == 'bernoulli_loggaussian':
-        loss = -bernoulli_loggaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction='mean')
+    elif model.likelihood == 'bernoulli_lognormal':
+        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction='mean')
 
     elif model.likelihood == 'bernoulli_gumbel':
         loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction='mean')
@@ -269,7 +300,7 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
     return loss
 
 def gmm_fn(alpha1, alpha2, beta1, beta2, q):
-    "Mixture model of two gamma distributions"
+    "Returns a mixture model of two gamma distributions"
     
     if type(q) == torch.Tensor:
 
@@ -298,21 +329,93 @@ def gmm_fn(alpha1, alpha2, beta1, beta2, q):
     return gmm
 
 def cdf_apply(df: pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, obs : float = 10):
+    "Calculate the CDF of a modelled distribution for all rows in a pd.Dataframe"
     
     if likelihood_fn == 'bgmm':
         
         pi = df['pi']
         alpha = df['alpha']
         beta = df['beta']
-        # perc = df[series] 
-
         return pi + stats.gamma.cdf(obs, a=alpha, loc=0, scale=1/beta)*(1-pi)
+
+    elif likelihood_fn == 'b2gmm':
+
+        pi = df['pi']
+        alpha1 = df['alpha1']
+        beta1 = df['beta1']
+        alpha2 = df['alpha2']
+        beta2 = df['beta2']
+        q = df['q']
+
+        if obs > pi:
+            return pi + gmm_fn(alpha1, alpha2, beta1, beta2 , q).cdf(obs)*(1-pi)
+        else:
+            return 0
+
+    elif likelihood_fn == 'bernoulli_lognormal':
+
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        return pi + stats.lognorm.cdf(obs, s=sigma, loc=0, scale=np.exp(mu))*(1-pi)
+    
+    elif likelihood_fn == 'bernoulli_gaussian':
+
+        pi = df['pi']
+        mu = df['mu']
+        sigma = df['sigma']
+        return pi + stats.norm.cdf(obs, loc=mu, scale=sigma)*(1-pi)
+
+    elif likelihood_fn == 'bernoulli_gumbel':
+
+        pi = df['pi']
+        mu = df['mu']
+        beta = df['beta']
+
+        return pi + stats.gumbel_r.cdf(obs, loc=mu, scale=beta)*(1-pi)  
+    
+    elif likelihood_fn == 'bernoulli_halfnormal':
+            
+        pi = df['pi']
+        sigma = df['sigma']
+        return pi + stats.halfnorm.cdf(obs, scale=sigma)*(1-pi)
+
+    elif likelihood_fn == 'gumbel':
+
+        mu = df['mu']
+        beta = df['beta']
+        return stats.gumbel_r.cdf(obs, loc=mu, scale=beta)
+    
+    elif likelihood_fn == 'gamma':
+            
+        alpha = df['alpha']
+        beta = df['beta']
+        return stats.gamma.cdf(obs, a=alpha, loc=0, scale=1/beta)
+
+    elif likelihood_fn == 'lognormal':
+                
+        mu = df['mu']
+        sigma = df['sigma']
+        return stats.lognorm.cdf(obs, s=sigma, loc=0, scale=np.exp(mu))
+    
+    elif likelihood_fn == 'halfnormal':
+                    
+        sigma = df['sigma']
+        return stats.halfnorm.cdf(obs, scale=sigma)
+
+    elif likelihood_fn == 'ggmm':
+        alpha1 = df['alpha1']
+        beta1 = df['beta1']
+        alpha2 = df['alpha2']
+        beta2 = df['beta2']
+        q = df['q']
+        return gmm_fn(alpha1, alpha2, beta1, beta2 , q).cdf(obs)
 
     else:
         raise ValueError('Probability distribution not yet implemented')
-
+        
 def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, series : str = 'uniform'):
-    "Sample modelled distributions from a pd.Dataframe"
+    "Sample modelled distributions for all rows in a pd.Dataframe"
     
     if likelihood_fn == 'gaussian':
 
@@ -392,7 +495,7 @@ def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : 
         else:
             return 0
     
-    elif likelihood_fn == 'bernoulli_loggaussian':
+    elif likelihood_fn == 'bernoulli_lognormal':
 
         pi = df['pi']
         mu = df['mu']
@@ -429,9 +532,51 @@ def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : 
             return stats.halfnorm.ppf(quantile, scale=sigma)
         else:
             return 0
+    
+    elif likelihood_fn == 'gumbel':
+            
+        mu = df['mu']
+        beta = df['beta']
+        perc = df[series] 
+
+        quantile = perc
+        return stats.gumbel_r.ppf(quantile, loc=mu, scale=beta)
+
+    elif likelihood_fn == 'lognormal':
+                
+        mu = df['mu']
+        sigma = df['sigma']
+        perc = df[series] 
+
+        quantile = perc
+        return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
+    
+    elif likelihood_fn == 'halfnormal':
+                    
+        sigma = df['sigma']
+        perc = df[series] 
+
+        quantile = perc
+        return stats.halfnorm.ppf(quantile, scale=sigma)
+
+    elif likelihood_fn == 'ggmm':
+
+        alpha1 = df['alpha1']
+        beta1 = df['beta1']
+        alpha2 = df['alpha2']
+        beta2 = df['beta2']
+        q = df['q']
+        perc = df[series] 
+
+        quantile = perc
+        return gmm_fn(alpha1, alpha2, beta1, beta2 , q).ppf(quantile)
+    
+    else:
+        raise ValueError('Probability distribution not yet implemented')
+        
 
 def mixture_percentile(df : pd.DataFrame, perc : float, likelihood_fn : str, sample_size : int = 1000):
-    """Evalutates mixture model distribution of choice based on percentile value."""
+    """Evalutates distribution of choice based on percentile value for all rows in a pd.Dataframe"""
 
     if likelihood_fn == 'gamma':
 
@@ -494,7 +639,7 @@ def mixture_percentile(df : pd.DataFrame, perc : float, likelihood_fn : str, sam
         else:
             return 0
         
-    elif likelihood_fn == 'bernoulli_loggaussian':
+    elif likelihood_fn == 'bernoulli_lognormal':
 
         pi = df['pi']
         mu = df['mu']
@@ -529,25 +674,8 @@ def mixture_percentile(df : pd.DataFrame, perc : float, likelihood_fn : str, sam
         else:
             return 0
         
-def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=None, x_std=None,
-                     confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, threshold=None, model_type='MLP'):
+def _add_parameter_series(new_df : pd.DataFrame, model, predictands, raw_simulation_series : str):
 
-    if sequential_samples:
-        seq_predictors_dict = {}
-        for i in range(n_samples):
-            predictands = make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=threshold)
-            seq_predictors_dict[i] = predictands
-        
-    else:
-        predictands = make_predictions(model, test_dataset, model_type)
-
-    predictands =predictands.cpu()
-    
-    if type(st_names_test)==type(None):
-        new_df = df.copy()
-    else:  
-        new_df = df[df['Station'].isin(st_names_test)].copy()
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
     if model.likelihood == 'gamma':
         new_df['alpha'] = predictands[:,0]
         new_df['beta'] = predictands[:,1]
@@ -561,7 +689,7 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
         new_df['beta'] = predictands[:,1]
         new_df['mean'] = new_df['alpha']/new_df['beta']
 
-        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
 
         new_df[f'perc_median'] = 0.5
         new_df[f'median'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_median')
@@ -572,7 +700,26 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
 
         new_df['mean'] = new_df['mu']
 
-        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
+    
+    elif model.likelihood == 'lognormal':
+        new_df['mu'] = predictands[:,0]
+        new_df['sigma'] = predictands[:,1]
+
+        # new_df['mean'] = np.exp(new_df['mu'] + new_df['sigma']**2/2)
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
+        # new_df[f'perc_median'] = 0.5
+        # new_df[f'median'] = new_df.apply(sample_apply, axis=1, likelihood_fn=model.likelihood, series='perc_median')
+    
+    elif model.likelihood == 'halfnormal':
+        new_df['sigma'] = predictands[:,0]
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
+
+    elif model.likelihood == 'gumbel':
+        new_df['mu'] = predictands[:,0]
+        new_df['beta'] = predictands[:,1]
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
+        # new_df['mean'] = new_df['mu'] + 0.57721*new_df['beta']
 
     elif model.likelihood == 'ggmm':
         new_df['alpha1'] = predictands[:,0]
@@ -627,7 +774,7 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
         new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
         new_df['mean'] = new_df['occurrence']*new_df['mu']
     
-    elif model.likelihood == 'bernoulli_loggaussian':
+    elif model.likelihood == 'bernoulli_lognormal':
         new_df['pi'] = predictands[:,0]
         new_df['mu'] = predictands[:,1]
         new_df['sigma'] = predictands[:,2] 
@@ -672,10 +819,35 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
         new_df['mean'] = new_df['occurrence']*(new_df['low_gamma_occurrence']*new_df['alpha1']/new_df['beta1'] + (1-new_df['low_gamma_occurrence'])*new_df['alpha2']/new_df['beta2'])
     
     elif type(model.likelihood) ==type(None):
-        new_df['occurrence'] = new_df['wrf_prcp'].apply(lambda x: 1 if x>0 else 0)
+        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
         new_df['sample_0'] = predictands.squeeze() * new_df['occurrence']
-        draw_samples = False
-        confidence_intervals = False
+
+    return new_df
+
+def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=None, x_std=None,
+                     confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, 
+                     threshold=None, model_type='MLP', raw_simulation_series='precip_norris'):
+
+    if sequential_samples:
+        seq_predictors_dict = {}
+        for i in range(n_samples):
+            predictands = make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=threshold)
+            seq_predictors_dict[i] = predictands
+        
+    else:
+        predictands = make_predictions(model, test_dataset, model_type)
+
+    predictands =predictands.cpu()
+    
+    if type(st_names_test)==type(None):
+        new_df = df.copy()
+    else:  
+        new_df = df[df['Station'].isin(st_names_test)].copy()
+
+    new_df = _add_parameter_series(new_df, model, predictands, raw_simulation_series)
+
+    draw_samples = False
+    confidence_intervals = False
     
     if draw_samples:
         if sequential_samples:
@@ -704,16 +876,17 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
         #new_df['low_ci'] = new_df.apply(mixture_percentile, axis=1, args=(idx, model.likelihood))
         #new_df['high_ci'] = new_df.apply(mixture_percentile, axis=1, args=(1-idx, model.likelihood))
 
-    quantile = 0.9
-    new_df[f'QS_quantile'] = quantile
-    new_df['QS_sample'] = new_df.apply(sample_apply, axis=1, args=(model.likelihood, 10000, 'QS_quantile'))
-    new_df[f'BS'] = new_df.apply(BS, axis=1, args=('pi','Prec',0))
-    new_df[f'QS'] = new_df.apply(QS, axis=1, args=('QS_sample', 'Prec', quantile))
+    
+    # quantile = 0.9
+    # new_df[f'QS_quantile'] = quantile
+    # new_df['QS_sample'] = new_df.apply(sample_apply, axis=1, args=(model.likelihood, 10000, 'QS_quantile'))
+    # new_df[f'BS'] = new_df.apply(BS, axis=1, args=('pi','Prec',0))
+    # new_df[f'QS'] = new_df.apply(QS, axis=1, args=('QS_sample', 'Prec', quantile))
                                               
     return new_df
 
-
 def mixture_percentile_gamma_only(df, perc, likelihood_fn, sample_size=1000):
+
     if likelihood_fn == 'bgmm':
         pi = df['pi']
         alpha = df['alpha']
@@ -739,6 +912,7 @@ def mixture_percentile_gamma_only(df, perc, likelihood_fn, sample_size=1000):
             return 0
 
 def sample_mc(model, theta_dict):
+    
     if model.likelihood == 'bgmm':
         pi = theta_dict['pi']
         alpha = theta_dict['alpha']
@@ -765,7 +939,7 @@ def sample_mc(model, theta_dict):
         else:
             return 0
     
-    elif model.likelihood == 'bernoulli_loggaussian':
+    elif model.likelihood == 'bernoulli_lognormal':
         pi = theta_dict['pi']
         mu = theta_dict['mu']
         sigma = theta_dict['sigma']
@@ -777,12 +951,12 @@ def sample_mc(model, theta_dict):
             return stats.lognorm.ppf(quantile, s=sigma, scale=np.exp(mu))
         else:
             return 0
-
-def truncate_sample(x, threshold):
-    if x<threshold:
-        return x
-    else:
+    
+def truncate_sample(x, threshold=300):
+    if x>threshold:
         return threshold
+    else:
+        return x
 
 def count_zeros(x,threshold=0):
     return np.sum(x<=threshold)
@@ -802,7 +976,7 @@ def make_predictions(model, test_dataset, model_type = 'MLP'):
 
         test_predictors = test_dataset.tensors[0].to(device)    
 
-        if model_type == 'SimpleRNN':
+        if model_type in ['SimpleRNN','LSTM','GRU']:
             test_predictors = torch.unsqueeze(test_predictors, 0)
         
         test_predictions = model(test_predictors)
@@ -817,10 +991,30 @@ def _get_theta_params(likelihood):
         return ['pi','alpha','beta']
     elif likelihood == 'bernoulli_gaussian':
         return ['pi','mu','sigma']
-    elif likelihood == 'bernoulli_loggaussian':
+    elif likelihood == 'bernoulli_lognormal':
         return ['pi','mu','sigma']
     elif likelihood == 'gaussian':
         return ['mu','sigma']
+    elif likelihood == 'gamma':
+        return ['alpha','beta']
+    elif likelihood == 'gamma_nonzero':
+        return ['alpha','beta']
+    elif likelihood == 'ggmm':
+        return ['alpha1','alpha2','beta1','beta2','q']
+    elif likelihood == 'b2gmm':
+        return ['pi','alpha1','alpha2','beta1','beta2','q']
+    elif likelihood == 'b2sgmm':
+        return ['pi','alpha1','alpha2','beta1','beta2','q','t']
+    elif likelihood == 'bernoulli_gumbel':
+        return ['pi','mu','beta']
+    elif likelihood == 'bernoulli_halfnormal':
+        return ['pi','sigma']
+    elif likelihood == 'bernoulli_gaussian':
+        return ['pi','mu','sigma']
+    elif likelihood == 'bernoulli_lognormal':
+        return ['pi','mu','sigma']
+    else:
+        raise ValueError('Probability distribution not yet implemented')
 
 def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=None):
 
@@ -918,7 +1112,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
             train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
             val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
             test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
-        elif model_type == "SimpleRNN":
+        elif model_type in ["SimpleRNN","LSTM","GRU"]:
             sequential_samples = True
             train_dataset = CustomSimpleRNNDataset(train_tensor_x,train_tensor_y,train_tensor_s) # create training dataset
             val_dataset = CustomSimpleRNNDataset(val_tensor_x,val_tensor_y,val_tensor_s) # create test dataset
@@ -936,6 +1130,12 @@ def multirun(data, predictors, params, epochs, split_by='station',
         elif model_type == "SimpleRNN":
             network = SimpleRNN(in_channels=d,
                                 likelihood_fn=likelihood_fn)
+        elif model_type == "LSTM":
+            network = LSTM(in_channels=d,
+                            likelihood_fn=likelihood_fn)
+        elif model_type == "GRU":
+            network = GRU(in_channels=d,
+                            likelihood_fn=likelihood_fn)
         else:
             raise ValueError('No valid model specified')
 
@@ -945,14 +1145,14 @@ def multirun(data, predictors, params, epochs, split_by='station',
 
         if model_type in ["VGLM","MLP"]:
             train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-            val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-            test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+            val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size*2, shuffle=False, num_workers=num_workers)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size*2, shuffle=False, num_workers=num_workers)
         
-        elif model_type == "SimpleRNN":
+        elif model_type in ["SimpleRNN","LSTM","GRU"]:
             train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-            val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-            test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-        
+            val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size*2, shuffle=False, num_workers=num_workers)
+            test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size*2, shuffle=False, num_workers=num_workers)
+            
         optimizer = torch.optim.Adam(network.parameters(), lr=lr)
         
         change_folder = True
@@ -1018,7 +1218,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
             if load_best:
                 network.load_state_dict(torch.load(os.path.join(wd.root,'model_best.pth.tar')))
             
-            # if show_loss_plot: plot_losses(train_losses, val_losses, test_losses)
+            if show_loss_plot: _plot_losses(train_losses, val_losses, test_losses, model_type=model_type, likelihood_fn=likelihood_fn, k=k, random_label=random_label)
 
         elif load_run is not None:
             network.load_state_dict(torch.load(os.path.join(load_root,'model_best.pth.tar')))
@@ -1072,7 +1272,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
                 fa_attr = fa.attribute(test_dataset.tensors[0], target=i)  
 
                 if not(key in importance.keys()):
-                    importance[key] = {}  
+                    importance[key] = {}
                 
                 if not(f'k{k}' in importance[key]):
                     importance[key][f'k{k}'] = {}
@@ -1088,7 +1288,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
         
         m.end_run()    
         
-    m.save('results')
+    m.save(f'runs/{experiment_label}')
 
     # Create predictions for k_all
     for run in predictions.keys():
@@ -1103,17 +1303,3 @@ def multirun(data, predictors, params, epochs, split_by='station',
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return st_test, predictions, importance
-
-def truncate_sample(x, threshold=300):
-    if x>threshold:
-        return threshold
-    else:
-        return x
-
-# def brier_scores(df, columns, obs, wet_threshold):
-#     for c in columns:
-#         df[f'BS_{c}'] = df.apply(BS, axis=1, args=(c, obs, wet_threshold))
-
-# def quantile_scores(df, columns, obs, quantile):    
-#     for c in columns:
-#         df[f'QS_{c}'] = df.apply(QS, axis=1, args=(c, obs, quantile))

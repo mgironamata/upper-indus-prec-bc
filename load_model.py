@@ -3,10 +3,10 @@ import torch, os
 
 def create_and_load_model(PATH : str, in_channels : int):
 
-    likelihood_fn = PATH.split('likelihood-fn-')[1].split('-hidden')[0]
-    hidden_channels = [int(x) for x in PATH.split('hidden-channels-')[1].split('-dropout')[0].split('-')]
-    dropout_rate = int(PATH.split('dropout-rate-')[1].split('-linear')[0])
-    linear_model = PATH.split('linear-model-')[1].split('-k')[0].capitalize()  
+    likelihood_fn = PATH.split('likelihood-fn-')[1].split('-dropout')[0]
+    hidden_channels = [int(x) for x in PATH.split('/')[-2].split('mlp-')[1].split('-')]
+    dropout_rate = int(PATH.split('dropout-rate-')[1].split('-')[0])
+    linear_model = False  
 
     # print(likelihood_fn)
     # print(hidden_channels)

@@ -23,6 +23,12 @@ def _define_out_channels(self):
         return 2
     elif self.likelihood == 'gamma_nonzero':
         return 2
+    elif self.likelihood == 'gumbel':
+        return 2
+    elif self.likelihood == 'halfnormal':
+        return 1
+    elif self.likelihood == 'lognormal':
+        return 2
     elif self.likelihood == 'ggmm':
         return 5   
     elif self.likelihood == 'bgmm':
@@ -35,7 +41,7 @@ def _define_out_channels(self):
         return 4
     elif self.likelihood == 'bernoulli_gaussian':
         return 3
-    elif self.likelihood == 'bernoulli_loggaussian':
+    elif self.likelihood == 'bernoulli_lognormal':
         return 3
     elif self.likelihood == 'bernoulli_gumbel':
         return 3
@@ -83,7 +89,7 @@ def _compute_likelihood(self, x):
         x[:,0] = self.sigmoid(x[:,0]) # pi
         x[:,2] = self.exp(x[:,2]) # sigma
         return x
-    elif self.likelihood=='bernoulli_loggaussian':
+    elif self.likelihood=='bernoulli_lognormal':
         x[:,0] = self.sigmoid(x[:,0]) # pi
         x[:,2] = self.exp(x[:,2]) # sigma
         return x
@@ -94,6 +100,15 @@ def _compute_likelihood(self, x):
     elif self.likelihood=='bernoulli_halfnormal':
         x[:,0] = self.sigmoid(x[:,0]) # pi
         x[:,1] = self.exp(x[:,1]) # sigma
+        return x
+    elif self.likelihood=='halfnormal':
+        x[:,0] = self.exp(x[:,0]) # sigma
+        return x
+    elif self.likelihood=='lognormal':
+        x[:,1] = self.exp(x[:,1]) # sigma
+        return x
+    elif self.likelihood=='gumbel':
+        x[:,1] = self.exp(x[:,1]) # beta       
         return x
 
 
@@ -203,7 +218,7 @@ class SimpleRNN(nn.Module):
         
         self.out_channels = _define_out_channels(self)
 
-        self.rnn = nn.RNN(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1, batch_first=True)
+        self.rnn = nn.RNN(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1, nonlinearity = 'relu', batch_first=True)
 
         self.exp = torch.exp
         self.sigmoid = torch.sigmoid
@@ -220,6 +235,62 @@ class SimpleRNN(nn.Module):
         # print(x.shape)
 
         return x
+
+class LSTM(nn.Module):
+    
+    def __init__(self, in_channels, likelihood_fn='bgmm'):
+
+        super(LSTM, self).__init__()
+
+        self.in_channels = in_channels
+        self.likelihood = likelihood_fn
+        self.out_channels = _define_out_channels(self)
+
+        self.lstm = nn.LSTM(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1, batch_first=True)
+
+        self.exp = torch.exp
+        self.sigmoid = torch.sigmoid
+
+    def forward(self, x):
+
+        if len(x.shape)<3:
+            x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
+        # input (x) shape should be: batch size, seq length, channels
+        z = self.lstm(x)[0] # [seq_length, batch_size = 1, output_channels]
+        t = z.reshape(z.shape[0]*z.shape[1], z.shape[2]) # [seq_length, output_channels]
+        x = _compute_likelihood(self, t)
+        # x - torch.squeeze(x, 1)
+        # print(x.shape)
+
+        return x
+        
+class GRU(nn.Module):
+        
+    def __init__(self, in_channels, likelihood_fn='bgmm'):
+
+        super(GRU, self).__init__()
+
+        self.in_channels = in_channels
+        self.likelihood = likelihood_fn
+        self.out_channels = _define_out_channels(self)
+
+        self.gru = nn.GRU(input_size = self.in_channels, hidden_size = self.out_channels, num_layers = 1, batch_first=True)
+
+        self.exp = torch.exp
+        self.sigmoid = torch.sigmoid
+
+    def forward(self, x):
+
+        if len(x.shape)<3:
+            x = torch.unsqueeze(x,1) # makes shape: [seq_length, batch_size = 1, input_channels] 
+        # input (x) shape should be: batch size, seq length, channels
+        z = self.gru(x)[0] # [seq_length, batch_size = 1, output_channels]
+        t = z.reshape(z.shape[0]*z.shape[1], z.shape[2]) # [seq_length, output_channels]
+        x = _compute_likelihood(self, t)
+        # x - torch.squeeze(x, 1)
+        # print(x.shape)
+
+        return x 
 
 class SimpleCNN(nn.Module):
 

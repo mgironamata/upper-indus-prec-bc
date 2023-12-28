@@ -273,6 +273,12 @@ def _drop_dataframe_nan_values(df, series='Prec', verbose=False):
     
     return df
 
+def replace_negative_values(df, series='Prec', verbose=False):
+
+    df[series][df[series] < 0] = 0
+    
+    return df
+
 def clip_time_period(df, start, end, verbose=False):
     """Returns a Dataframe clipped to the time period specified by the start and end dates.
 
@@ -436,6 +442,7 @@ def create_station_dataframe(TRAIN_PATH: str, start: str, end: str, add_yesterda
 
     st = (import_dataframe(TRAIN_PATH)
         .pipe(_drop_dataframe_nan_values, series='Prec')
+        .pipe(replace_negative_values, series='Prec')
         .pipe(clip_time_period, start, end)
         .pipe(add_year_month_season)
         .pipe(calculate_doy_columns)

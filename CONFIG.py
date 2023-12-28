@@ -1,20 +1,5 @@
 # Imports
 from collections import OrderedDict
-from dataclasses import dataclass
-from typing import List
-import torch
-
-# @dataclass
-# class Parameters:
-#     start : str
-#     end : str
-#     TRAIN_PATH : str
-#     predictors : List[str]
-#     predictand : List[str]
-#     params : OrderedDict
-#     epochs : int
-#     seasons : List[str]
-#     n_samples: int
 
 # Device to perform computations on.
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -53,7 +38,8 @@ DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norri
               'COMBINED' : '../../data/norris/enriched_obs/enriched_combined_obs_norris_ready.pkl'}
 
 # Run name
-RUN_NAME = f'{REGION}_BGMM_09_NOV_2023_EXP_2'
+# RUN_NAME = f'{REGION}_ALLMODELS_19_NOV_2023_EXP_2'
+RUN_NAME = f'{REGION}_RECURRENT_2_DEC_2023_EXP_{EXPERIMENT}'
 
 ADD_PREVIOUS_DAY = False
 
@@ -93,20 +79,35 @@ sort_by_quantile = False
 params = OrderedDict(
     lr = [0.001]
     ,batch_size = [32]
-    ,likelihood_fn = ['bgmm'] #,'bernoulli_loggaussian', 'b2gmm']
+    ,likelihood_fn = [
+                      # 'gaussian',
+                      # 'gamma',
+                      # 'lognormal',
+                      # 'gumbel',
+                      # 'halfnormal',
+                      # ' bgmm',
+                      #'b2gmm',
+                      'bernoulli_lognormal',
+                      # 'bernoulli_gaussian',
+                      # 'bernoulli_gumbel',
+                      # 'bernoulli_halfnormal',
+                      ]
     ,dropout_rate = [0]
     ,random_noise = [0]
     ,k = list(range(K_FOLD)) 
     ,model_arch = [
-                   ('VGLM',[]),
-                   ('MLP',[10]),
-                   ('SimpleRNN',[10]),
+                  #  ('VGLM',[]),
+                  #  ('MLP',[10]),
+                  #  ('SimpleRNN',[10]),
                    ('MLP',[50,50]),
+                  #  ('MLP',[100,100,100,100]),
+                   ('GRU',[50,50]),
+                    ('LSTM',[50,50]),
                    ('SimpleRNN',[50,50])
                   ]
 )
 
-epochs = 10
+epochs = 5
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']
