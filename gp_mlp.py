@@ -10,6 +10,8 @@ from math import pi
 from datetime import datetime
 from collections import OrderedDict
 
+from preprocessing_utils import DataPreprocessing
+
 import torch
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 
@@ -122,24 +124,26 @@ class UpperIndusDataset(Dataset):
 
 def prepare_data(TRAIN_PATH, start, end, predictant, predictors, stations=None):
     
-    st = (import_dataframe(TRAIN_PATH)
-    .pipe(drop_df_NaNs, series='Prec') # Drop NaNs
-    .pipe(clip_time_period, start, end) # Clip data temporally
-    )
-    
-    st[st['Basin']=='Beas']
-    
+    data = DataPreprocessing(TRAIN_PATH, start, end)
+    st = data.st.drop_duplicates()
+
     n = len(st)
 
     if stations != None:
         st = st[st['Station'].isin(stations)]
+    
     st.set_index(['Date','Station'], inplace=True)
+    
     st = st[predictant + predictors]
+
+    # pdb.set_trace()
 
     mean = st[predictors].mean().values
     var = st[predictors].var().values
 
     st[predictors] = (st[predictors] - mean) / np.sqrt(var)
+
+    # st.reset_index(inplace=True)
 
     st = st.unstack(1).stack(1, dropna=False)
     st['X'] = st.groupby("Station")['X'].transform('mean')
@@ -220,3 +224,34 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         optimizer.zero_grad()
     
     return elbo, recon, kl, k
+
+if __name__ == "__main__":
+    # Parameters
+    start="2010-01-01"
+    end="2020-12-31"
+    TRAIN_PATH = r"data/norris/enriched_obs/enriched_langtang_obs_norris_ready.pkl"
+
+    predictant = ['Prec']
+    predictors = [
+              #'Date',
+              #'Station',
+              #'Prec',
+              #'Corrected Station Name', 
+              'X', 'Y',
+              #'Altitude (m)', 
+              'Z', 
+              'precip_norris', #'wrf_bc_prcp', 
+              #'elev_hr', 
+              #'aspect','slope', 
+              #'doy', 
+              'doy_sin', 'doy_cos', 
+              #'wrf_prcp_-1', 'wrf_prcp_-2','wrf_prcp_1', 'wrf_prcp_2', 
+              #'Basin', 'lon', 'lat', 
+#               'era5_u', 'era5_v',
+              #'era5_u_-2', 'era5_u_-1', 'era5_u_1', 'era5_u_2', 
+              #'era5_v_-2', 'era5_v_-1', 'era5_v_1', 'era5_v_2'
+             ]
+
+    ds_dataset = UpperIndusDataset(TRAIN_PATH, start, end, predictant, predictors, stations=None)
+    
+
