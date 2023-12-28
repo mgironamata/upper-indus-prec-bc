@@ -1,0 +1,4 @@
+STD = {'WAPDA' : 3.334746,
+       'ICIMOD' : 4.285514,
+       'SUSHIWAT' : 4.018988,
+       'COMBINED' : 3.965158}
