@@ -1,21 +1,15 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
-import os, shutil, time, pdb, random, pickle
-import scipy.stats as stats 
-
-from IPython.display import clear_output
+import pdb
 
 from math import pi
-from datetime import datetime
-from collections import OrderedDict
 
 from preprocessing_utils import DataPreprocessing
 
 import torch
-from torch.utils.data import TensorDataset, DataLoader, Dataset
+from torch.utils.data import Dataset
 
-from importlib import reload
 from models import *
 from utils import *
 from runmanager import *
@@ -23,14 +17,6 @@ from experiment import *
 from plot_utils import *
 from preprocessing_utils import *
 from elbo import *
-
-# from shapely.geometry import box, mapping
-# import descartes
-
-from sklearn.metrics import mean_squared_error as mse
-from sklearn.model_selection import KFold
-
-from matplotlib import pyplot as plt
 
 pd.options.display.max_columns = None
 
@@ -52,7 +38,7 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
-__all__ = ['UpperIndusGridDataset', 'UpperIndusDataset', 'prepare_data', 'MultipleOptimizer', 'forward_backward_pass']
+__all__ = ['UpperIndusGridDataset', 'UpperIndusDataset', 'prepare_data', 'MultipleOptimizer', 'forward_backward_pass','MapDataset']
 
 class UpperIndusGridDataset(Dataset):
     """Grid data for the Beas and Sutlej basins of the Upper Indus region"""
@@ -103,13 +89,42 @@ class UpperIndusGridDataset(Dataset):
         
         return array_norm, array
 
+class MapDataset(Dataset):
+
+    def __init__(self, PATH, predictors, train_mean, train_var):
+
+        self.predictors = predictors
+        self.df = pd.read_csv(PATH)[predictors]
+
+        # normalise df
+        self.df_norm = (self.df - train_mean[:]) / np.sqrt(train_var[:])
+
+        self.ds = self.df.to_xarray()
+        self.ds_norm = self.df_norm.to_xarray()
+        
+
+    def __len__(self):
+        return 1
+    
+    def __getitem__(self,idx):
+        return self.ds_norm.to_array().values, self.ds.to_array().values
+
 class UpperIndusDataset(Dataset):
-    """Station data for the Beas and Sutlej basins of the Upper Indus region"""
+
     def __init__(self, TRAIN_PATH, start, end, predictant, predictors, stations=None):
+        
         st, n, mean, var = prepare_data(TRAIN_PATH, start, end, predictant, predictors, stations=stations)
+        
         self.stations = stations
         self.st = st
         self.ds = st.to_xarray()
+
+        # create mask for missing data
+        # self.mask = ~self.ds.isnull()
+
+        # replace ds missing values by zeros
+        self.ds = self.ds.fillna(0)
+
         self.n = n
         
         self.mean = mean
@@ -120,6 +135,7 @@ class UpperIndusDataset(Dataset):
 
     def __getitem__(self,idx):
         arr = self.ds.isel(Date=idx).to_array().values
+        # mask = self.mask.isel(Date=idx).to_array().values
         return arr[1:,:], arr[0,:]
 
 def prepare_data(TRAIN_PATH, start, end, predictant, predictors, stations=None):
@@ -135,8 +151,6 @@ def prepare_data(TRAIN_PATH, start, end, predictant, predictors, stations=None):
     st.set_index(['Date','Station'], inplace=True)
     
     st = st[predictant + predictors]
-
-    # pdb.set_trace()
 
     mean = st[predictors].mean().values
     var = st[predictors].var().values
@@ -186,6 +200,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1)
     labels = labels.unsqueeze(-1).repeat(1,1,n_samples)
     
+    
     # Sample z and concatenate to inputs
     if inducing_points:
         if f_marginal:
@@ -212,7 +227,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     outputs = model(inputs[mask].float())
     
     # Reconstruction term  
-    recon = -loss_fn(outputs, labels[mask], inputs, model, reduction='sum') # Check if this is biased
+    recon = -loss_fn(outputs, labels[mask], inputs, model, reduction='None') # Check if this is biased
 
     # ELBO
     elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
