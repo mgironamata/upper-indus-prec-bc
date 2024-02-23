@@ -228,6 +228,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     
     # Reconstruction term  
     recon = -loss_fn(outputs, labels[mask], inputs, model, reduction='None') # Check if this is biased
+    pdb.set_trace()
 
     # ELBO
     elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
