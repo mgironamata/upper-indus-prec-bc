@@ -276,6 +276,7 @@ def _drop_dataframe_nan_values(df, series='Prec', verbose=False):
 def replace_negative_values(df, series='Prec', verbose=False):
 
     df[series][df[series] < 0] = 0
+    # df.loc[df[series] < 0, series] = 0
     
     return df
 
@@ -300,7 +301,7 @@ def clip_time_period(df, start, end, verbose=False):
 def add_year_month_season(st):
     st['year'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).year
     st['month'] = pd.DatetimeIndex(pd.to_datetime(st['Date'], format='%Y-%m-%d')).month
-    st['season'] = st.apply(season_apply, axis=1) 
+    # st['season'] = st.apply(season_apply, axis=1) 
     return st
 
 def _filter_complete_station_years(df):

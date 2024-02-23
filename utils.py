@@ -28,6 +28,7 @@ from runmanager import RunBuilder, RunManager
 
 # from plot_utils import plot_losses
 # from preprocessing_utils import *
+import pdb
 
 import CONFIG
 
@@ -122,7 +123,7 @@ class CustomSimpleRNNDataset(Dataset):
         
         return predictor, predictand
         
-def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False):
+def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader=None, print_progress=False, device=device, permute=False):
     """Runs training for one epoch.
 
     Args:
@@ -146,9 +147,17 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
 
     for idx, (predictors, labels) in enumerate(train_loader):
         
-        predictors = predictors.to(device)
-        labels = labels.to(device)
+        predictors = predictors.float().to(device)
+        labels = labels.float().to(device)
 
+        if permute:
+            predictors = predictors.permute(0, 2, 1)
+
+        # convert predictors to 2 dimensional tensor
+        predictors = predictors.reshape(-1, predictors.shape[-1])
+        labels = labels.reshape(-1, labels.shape[-1])
+
+            
         # max_param = max(optimizer.param_groups[0]['params'])
         # min_param = min(optimizer.param_groups[0]['params'])
 
@@ -162,7 +171,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
 
         loss = loss_fn(predictands, labels, predictors, model)  
 
-        if loss.isnan():      
+        if loss.isnan():
 
             for k, v in model.state_dict().items():
                 if "weight" in k:
@@ -190,8 +199,15 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     with torch.no_grad():
         for _, (predictors, labels) in enumerate(valid_loader):
 
-            predictors = predictors.to(device)
-            labels = labels.to(device)
+            predictors = predictors.float().to(device)
+            labels = labels.float().to(device)
+
+            if permute:
+                predictors = predictors.permute(0, 2, 1)
+
+            # convert predictors to 2 dimensional tensor
+            predictors = predictors.reshape(-1, predictors.shape[-1])
+            labels = labels.reshape(-1, labels.shape[-1])
             
             predictands = model(predictors)
             loss = loss_fn(predictands, labels, predictors, model)
@@ -201,8 +217,15 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
 
             for _, (predictors, labels) in enumerate(test_loader):
 
-                predictors = predictors.to(device)
-                labels = labels.to(device)
+                predictors = predictors.float().to(device)
+                labels = labels.float().to(device)
+
+                if permute:
+                    predictors = predictors.permute(0, 2, 1)
+
+                # convert predictors to 2 dimensional tensor
+                predictors = predictors.reshape(-1, predictors.shape[-1])
+                labels = labels.reshape(-1, labels.shape[-1])
 
                 predictands = model(predictors)
                 loss = loss_fn(predictands, labels, predictors, model)
@@ -217,7 +240,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
-def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torch.tensor, model : MLP, reduction : str = 'mean'):
+def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torch.tensor, model : MLP, reduction : str = 'mean', mask : torch.tensor = None):
     """Computes loss function (log-probability of labels).
 
     Args:
@@ -232,7 +255,7 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
 
     if predictands.dim() > 2: predictands = predictands.reshape(prod(predictands.shape[:-1]),-1)
     if predictors.dim() > 2: predictors = predictors.reshape(prod(predictors.shape[:-1]),-1)
-    if labels.dim() > 2: labels = labels.reshape(prod(labels.shape[:-1]),-1)
+    if labels.dim() >= 2: labels = labels.reshape(prod(labels.shape[:-1]),-1)
 
     assert predictors.isnan().sum() == 0
     assert predictands.isnan().sum() == 0
@@ -241,14 +264,14 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
     # squeeze dimensions 0 and 1 for predictands, predictors...
         
     if model.likelihood == None:
-        mask = predictors[:,0] > predictors[:,0].mode().values.item() 
-        indices = mask.nonzero()
+        nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() # mask for non-zero values
+        indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
         loss = Fv.mse_loss(predictands[indices], labels[indices]) * ratio if len(indices)>0 else torch.tensor(0)
 
     elif model.likelihood == 'gaussian':
-        mask = predictors[:,0] > predictors[:,0].mode().values.item() 
-        indices = mask.nonzero()
+        nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
+        indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
         loss = -gaussian_logpdf(labels, mu=predictands[:,0][indices], sigma=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
     
@@ -256,8 +279,8 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
         loss = -gamma_logpdf(labels, alpha=predictands[:,0], beta=predictands[:,1], reduction=reduction)
 
     elif model.likelihood == 'gamma_nonzero':
-        mask = predictors[:,0] > predictors[:,0].mode().values.item() 
-        indices = mask.nonzero()
+        nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
+        indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
         loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
 
@@ -275,7 +298,7 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
                              beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction)
 
     elif model.likelihood == 'bgmm':
-        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
     
     elif model.likelihood == 'b2gmm':
         loss = -b2gmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
@@ -286,16 +309,16 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
                              beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], t=predictands[:,6], reduction=reduction)
     
     elif model.likelihood == 'bernoulli_gaussian':
-        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction='mean')
+        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
     
     elif model.likelihood == 'bernoulli_lognormal':
-        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction='mean')
+        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
 
     elif model.likelihood == 'bernoulli_gumbel':
-        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction='mean')
+        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction=reduction)
 
     elif model.likelihood == 'bernoulli_halfnormal':
-        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction='mean')
+        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
 
     return loss
 

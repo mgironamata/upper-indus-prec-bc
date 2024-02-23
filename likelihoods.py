@@ -2,10 +2,12 @@ import torch
 
 from torch.distributions.gamma import Gamma
 from torch.distributions.gumbel import Gumbel
-from torch.distributions.normal import Normal
+from torch.distributions    .normal import Normal
 from torch.distributions.half_normal import HalfNormal
 
 import CONFIG
+
+import pdb
 
 __all__ = [ 'gaussian_logpdf',
             'gamma_logpdf',
@@ -28,6 +30,11 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 """Device to perform computations on."""
 
+def _mask(logp, mask):
+    if mask is not None:
+        return logp[mask]
+    return logp
+
 def _reduce(logp, reduction):
     if not reduction:
         return logp
@@ -40,7 +47,7 @@ def _reduce(logp, reduction):
     else:
         raise RuntimeError(f'Unknown reduction "{reduction}".')
 
-def gaussian_logpdf(obs, mu, sigma, reduction='mean'):
+def gaussian_logpdf(obs, mu, sigma, reduction='mean', mask=None):
     """Gaussian model log-density.
 
     Args:
@@ -58,9 +65,12 @@ def gaussian_logpdf(obs, mu, sigma, reduction='mean'):
 
     logp = Normal(loc=mu, scale=sigma).log_prob(obs)
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def gamma_logpdf(obs, alpha, beta, reduction='mean'):
+def gamma_logpdf(obs, alpha, beta, reduction='mean', mask=None):
     """Gamma mixture model log-density.
 
     Args:
@@ -82,9 +92,12 @@ def gamma_logpdf(obs, alpha, beta, reduction='mean'):
 
     logp = Gamma(concentration=alpha, rate=beta).log_prob(obs)
 
+    if mask is not None:   
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
+def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None):
     """Benroulli-Gamma-Gamma mexture model log-density.
 
     Args:
@@ -117,9 +130,12 @@ def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
 
     logp = gmm.log_prob(obs)
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean'):
+def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean', mask=None):
     """Benroulli-Gamma mixture model log-density.
 
     Args:
@@ -145,9 +161,12 @@ def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + Gamma(concentration=alpha[g_mask], rate=beta[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
      
-def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
+def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None):
     """Benroulli-Gamma-Gamma mexture model log-density.
 
     Args:
@@ -184,9 +203,12 @@ def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean'):
     logp[g_mask] = torch.log(1-pi[g_mask]) + gmm.log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean'):
+def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean', mask=None):
     """Benroulli-Gamma-Gamma mixture model log-density.
 
     Args:
@@ -214,9 +236,12 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean')
     logp[g2_mask] = torch.log((1-pi[g2_mask])) + torch.log((1-q[g2_mask])) + Gamma(concentration=alpha2[g2_mask], rate=beta2[g2_mask]).log_prob(obs[g2_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
+def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
     """Benroulli-Gaussian mixture model log-density.
 
     Args:
@@ -240,9 +265,12 @@ def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + Normal(loc=mu[g_mask], scale=sigma[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean'):
+def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
     """Benroulli-lognormal mixture model log-density.
 
     Args:
@@ -266,9 +294,12 @@ def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + Normal(loc=mu[g_mask], scale=sigma[g_mask]).log_prob(torch.log(obs[g_mask]))
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
+def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean', mask=None):
     """Benroulli-Gumbel mixture model log-density.
 
     Args:
@@ -292,9 +323,12 @@ def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + Gumbel(loc=mu[g_mask], scale=beta[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
+def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean', mask=None):
     """Benroulli-HalfNormal mixture model log-density.
 
     Args:
@@ -317,9 +351,12 @@ def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean'):
     logp[g_mask] = torch.log((1-pi[g_mask])) + HalfNormal(scale=sigma[g_mask]).log_prob(obs[g_mask])
     logp[b_mask] = torch.log(pi[b_mask])
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def halfnormal_logpdf(obs, sigma, reduction='mean'):
+def halfnormal_logpdf(obs, sigma, reduction='mean', mask=None):
     """HalfNormal mixture model log-density.
 
     Args:
@@ -336,9 +373,12 @@ def halfnormal_logpdf(obs, sigma, reduction='mean'):
 
     logp = HalfNormal(scale=sigma).log_prob(obs)
 
+    if mask is not None:   
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def lognormal_logpdf(obs, mu, sigma, reduction='mean'):
+def lognormal_logpdf(obs, mu, sigma, reduction='mean', mask=None):
     """LogNormal mixture model log-density.
 
     Args:
@@ -360,9 +400,12 @@ def lognormal_logpdf(obs, mu, sigma, reduction='mean'):
 
     logp = Normal(loc=mu, scale=sigma).log_prob(torch.log(obs))
 
+    if mask is not None:
+        logp = _mask(logp, mask)
+
     return _reduce(logp, reduction)
 
-def gumbel_logpdf(obs, mu, beta, reduction='mean'):
+def gumbel_logpdf(obs, mu, beta, reduction='mean', mask=None):
     """Gumbel mixture model log-density.
 
     Args:
@@ -379,6 +422,9 @@ def gumbel_logpdf(obs, mu, beta, reduction='mean'):
     obs = obs.flatten()
 
     logp = Gumbel(loc=mu, scale=beta).log_prob(obs)
+
+    if mask is not None:
+        logp = _mask(logp, mask)
 
     return _reduce(logp, reduction)
 
