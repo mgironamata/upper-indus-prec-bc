@@ -66,8 +66,8 @@ def _compute_likelihood(self, x):
         x[:,-1]= self.sigmoid(x[:,-1]) # q: weight paramater for gamma mixture model 
         return x
     elif self.likelihood=='bgmm':
-        x[:,0] = self.sigmoid(x[:,0]) # pi
-        x[:,1:] = self.exp(x[:,1:]) # alpha, beta
+        x[...,0] = self.sigmoid(x[...,0]) # pi
+        x[...,1:] = self.exp(x[...,1:]) # alpha, beta
         return x
     elif self.likelihood=='b2gmm':
         x[:,0] = self.sigmoid(x[:,0]) # pi

@@ -240,6 +240,17 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
+def loss_fn_gp(predictands : torch.tensor, 
+               labels : torch.tensor, 
+               model : VGLM, 
+               reduction : str = 'mean', 
+               mask : torch.tensor = None):
+    
+    if model.likelihood == 'bgmm':
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
+
+    
+
 def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torch.tensor, model : MLP, reduction : str = 'mean', mask : torch.tensor = None):
     """Computes loss function (log-probability of labels).
 

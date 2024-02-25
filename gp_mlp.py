@@ -18,6 +18,9 @@ from plot_utils import *
 from preprocessing_utils import *
 from elbo import *
 
+# import Gamma distribution 
+from torch.distributions import Gamma
+
 pd.options.display.max_columns = None
 
 np.random.seed(4)
@@ -180,6 +183,12 @@ class MultipleOptimizer(object):
 
 def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, inducing_points=True, backward=True, f_marginal=True, n_samples=10):
     
+    inputs = inputs.float()
+    labels = labels.float()
+
+    # inputs [batch_size, num_predictors, num_stations]
+    # labels [batch_size, num_stations]
+
     b = inputs.shape[0] # mini batch size
 
     # Build MV Normal Distribution
@@ -192,14 +201,25 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     if inducing_points:
         f_post = f | (f(x_ind), q.sample())
         kl = q.kl(f(x_ind))
+
     else:
         f_x = f(x)
         kl = q.kl(f_x)
     
+    # pdb.set_trace()
+
     # Repeat input tensor K (n_samples) times
-    inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1)
+    inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) 
+    # what does the above line do? 
+    # it takes the inputs tensor and removes the first two predictors (X and Y)
+    # then it adds a new dimension at the end of the tensor
+    # then it repeats the tensor n_samples times
+    # then it permutes the dimensions of the tensor so that the last dimension is the second dimension
+
     labels = labels.unsqueeze(-1).repeat(1,1,n_samples)
     
+    # inputs shape: (b, num_stations, n_samples, num_predictors)
+    # labels shape: (b, num_stations, n_samples, 1)
     
     # Sample z and concatenate to inputs
     if inducing_points:
@@ -215,23 +235,74 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
 
     else:
         q_sample = q.sample(b).permute(1,0).unsqueeze(1)
-        inputs = torch.cat([q_sample, inputs], dim=1)
+        inputs = torch.cat([q_sample, inputs], dim=3)
 
     # Masking for missing data
     # inputs = inputs.permute(0,1,3,2)
+        
     mask = ~torch.any(inputs.isnan(),dim=3)
+
+    # pdb.set_trace()
     
-    k = mask.sum()
+    k = mask.any(dim=0).any(dim=1).sum()
 
     # Forward pass
-    outputs = model(inputs[mask].float())
+    outputs = model(inputs.float())
+
+    # pdb.set_trace()
+
+    assert inputs.isnan().sum() == 0
+    assert outputs.isnan().sum() == 0
+    assert labels.isnan().sum() == 0
+
+    device = labels.device
+    logp = torch.zeros_like(labels, device=device)
     
+    b_mask = labels == 0 # shape (b, n_samples, k)
+    g_mask = labels > 0
+
+    # shape of outputs: (b, num_stations, n_samples, num_output_dims)
+   
+    pi = outputs[...,0] # shape (b, num_stations, n_samples)
+    alpha = outputs[...,1] # shape (b, num_stations, n_samples)
+    beta = outputs[...,2] # shape (b, num_stations, n_samples)
+
+    # Computing log probabilities for gamma distribution where obs > 0
+    gamma_dist = Gamma(concentration=alpha[g_mask], rate=beta[g_mask])
+    logp[g_mask] = torch.log((1 - pi[g_mask])) + gamma_dist.log_prob(labels[g_mask])
+    
+    # Computing log probabilities for Bernoulli distribution where obs == 0
+    logp[b_mask] = torch.log(pi[b_mask])
+
+    if mask is not None:
+        logp = logp * mask
+
+    # sum logp over stations - resulting tensor dims: (b, n_samples)
+    sum_logp_N = logp.sum(1)
+
+    # Use torch.logsumexp for the final computation over Monte Carlo samples
+    sum_logp_NM = torch.logsumexp(sum_logp_N, dim=1) - torch.log(torch.tensor(n_samples, dtype=torch.float, device=device))
+    # what is the above doing? 
+    # sum_logp_N is a tensor of shape (b, n_samples)
+    # torch.logsumexp(sum_logp_N, dim=1) sums over the n_samples dimension
+    # then we subtract the log of the number of samples to get the average log likelihood over the samples
+
     # Reconstruction term  
-    recon = -loss_fn(outputs, labels[mask], inputs, model, reduction='None') # Check if this is biased
-    pdb.set_trace()
+    recon = -sum_logp_NM.mean()
+    # add regulatisation for recon term, e.g., limit to 1
+    
+    # pdb.set_trace()
+
+    # recon = -loss_fn(outputs, labels[mask], inputs, model, reduction=False) # Check if this is biased
 
     # ELBO
-    elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+    elbo = recon/(b*k) - kl/n*b 
+    # elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+
+    # add regulasita term
+    # elbo = elbo - 0.5 * (f_post.mean(x)**2).sum() / n
+    
+    print(f"ELBO: {elbo.item():.4f}, Recon: {(recon/(b*k)).item():.4f}, KL: {(kl/n*b).item():.4f}, K: {k.item()}")
 
     # Backward pass and optimizer step
     if backward:
