@@ -29,6 +29,7 @@ from runmanager import RunBuilder, RunManager
 # from plot_utils import plot_losses
 # from preprocessing_utils import *
 import pdb
+import gc
 
 import CONFIG
 
@@ -47,14 +48,22 @@ __all__ =  [
             'make_predictions',
             'make_sequential_predictions',
             'multirun',
-            'truncate_sample'
+            'truncate_sample',
+            'get_gpu_memory_usage',
+            'print_gpu_usage'
             ]
-            
+
 device = CONFIG.device
 
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 """Device to perform computations on."""
+
+def print_gpu_usage():
+    # Memory allocated for tensors
+    print(f"Memory Allocated: {torch.cuda.memory_allocated() / 1e9} GB")
+    # Memory reserved by the caching allocator
+    print(f"Memory Cached (Reserved): {torch.cuda.memory_reserved() / 1e9} GB")
 
 def _plot_losses(train_losses, val_losses, test_losses, model_type, likelihood_fn, k, random_label):
 
@@ -1337,3 +1346,32 @@ def multirun(data, predictors, params, epochs, split_by='station',
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return st_test, predictions, importance
+
+# Function to get the current GPU memory usage for tensors
+def get_gpu_memory_usage():
+    allocated_tensors = []
+    for obj in gc.get_objects():
+        try:
+            # Only consider Torch tensors
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                # Check if the tensor is on GPU
+                if obj.is_cuda:
+                    # Get the size of the tensor
+                    tensor_size = obj.size()
+                    # Calculate the memory usage in bytes
+                    memory_usage = obj.element_size() * obj.nelement()
+                    allocated_tensors.append((obj, tensor_size, memory_usage))
+        except Exception as e:
+            pass  # Skip any objects that aren't relevant or cause errors
+
+    # Sort the list of tensors by memory usage (descending)
+    allocated_tensors.sort(key=lambda x: x[2], reverse=True)
+    
+    # Print information about each tensor
+    for idx, (tensor, size, memory) in enumerate(allocated_tensors):
+        if (len(tensor.shape)==2):
+            if (tensor.shape[0]==199) & (tensor.shape[1]==199): 
+                tensor.detach()
+#                 del tensor
+        else: print(f"{idx} - Tensor size: {size}, Memory usage: {memory / (1024 ** 2):.2f} MB")
+#         print(f"{idx} - Tensor size: {size}, Memory usage: {memory / (1024 ** 2):.2f} MB")

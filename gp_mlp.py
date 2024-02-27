@@ -241,15 +241,11 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     # inputs = inputs.permute(0,1,3,2)
         
     mask = ~torch.any(inputs.isnan(),dim=3)
-
-    # pdb.set_trace()
     
     k = mask.any(dim=0).any(dim=1).sum()
 
     # Forward pass
     outputs = model(inputs.float())
-
-    # pdb.set_trace()
 
     assert inputs.isnan().sum() == 0
     assert outputs.isnan().sum() == 0
@@ -282,35 +278,31 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
 
     # Use torch.logsumexp for the final computation over Monte Carlo samples
     sum_logp_NM = torch.logsumexp(sum_logp_N, dim=1) - torch.log(torch.tensor(n_samples, dtype=torch.float, device=device))
-    # what is the above doing? 
     # sum_logp_N is a tensor of shape (b, n_samples)
     # torch.logsumexp(sum_logp_N, dim=1) sums over the n_samples dimension
     # then we subtract the log of the number of samples to get the average log likelihood over the samples
 
-    # Reconstruction term  
-    recon = -sum_logp_NM.mean()
-    # add regulatisation for recon term, e.g., limit to 1
-    
-    # pdb.set_trace()
-
+    # Reconstruction term, averaging the term sum_logp_NM over the batch size
+    neg_sum_logp_NM = -sum_logp_NM.mean()
     # recon = -loss_fn(outputs, labels[mask], inputs, model, reduction=False) # Check if this is biased
 
-    # ELBO
-    elbo = recon/(b*k) - kl/n*b 
-    # elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+    recon = logp.mean()
 
-    # add regulasita term
-    # elbo = elbo - 0.5 * (f_post.mean(x)**2).sum() / n
+    # ELBO
+    elbo = recon - kl/(n)
+    # elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
     
-    print(f"ELBO: {elbo.item():.4f}, Recon: {(recon/(b*k)).item():.4f}, KL: {(kl/n*b).item():.4f}, K: {k.item()}")
+    # print(f"ELBO: {elbo.item():.4f}, Recon: {(recon).item():.4f}, KL: {(kl/n).item():.4f}, K: {k.item()}")
 
     # Backward pass and optimizer step
     if backward:
         (-elbo).backward()
         optimizer.step()
         optimizer.zero_grad()
+
+    del f_sample
     
-    return elbo, recon, kl, k
+    return elbo, recon, kl, k, neg_sum_logp_NM
 
 if __name__ == "__main__":
     # Parameters
