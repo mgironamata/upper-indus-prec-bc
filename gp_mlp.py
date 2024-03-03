@@ -110,7 +110,8 @@ class MapDataset(Dataset):
         return 1
     
     def __getitem__(self,idx):
-        return self.ds_norm.to_array().values, self.ds.to_array().values
+        return np.array(self.df_norm), np.array(self.df)
+        #return self.ds_norm.to_array().values, self.ds.to_array().values
 
 class UpperIndusDataset(Dataset):
 
@@ -181,13 +182,10 @@ class MultipleOptimizer(object):
         for op in self.optimizers:
             op.step()
 
-def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, inducing_points=True, backward=True, f_marginal=True, n_samples=10):
+def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, inducing_points=True, backward=True, f_marginal=True, n_samples=10, test_time=False):
     
-    inputs = inputs.float()
-    labels = labels.float()
-
-    # inputs [batch_size, num_predictors, num_stations]
-    # labels [batch_size, num_stations]
+    inputs = inputs.float() # inputs [batch_size, num_predictors, num_stations]
+    if not test_time: labels = labels.float() # labels [batch_size, num_stations]
 
     b = inputs.shape[0] # mini batch size
 
@@ -205,21 +203,10 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     else:
         f_x = f(x)
         kl = q.kl(f_x)
-    
-    # pdb.set_trace()
 
     # Repeat input tensor K (n_samples) times
-    inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) 
-    # what does the above line do? 
-    # it takes the inputs tensor and removes the first two predictors (X and Y)
-    # then it adds a new dimension at the end of the tensor
-    # then it repeats the tensor n_samples times
-    # then it permutes the dimensions of the tensor so that the last dimension is the second dimension
-
-    labels = labels.unsqueeze(-1).repeat(1,1,n_samples)
-    
-    # inputs shape: (b, num_stations, n_samples, num_predictors)
-    # labels shape: (b, num_stations, n_samples, 1)
+    inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) # inputs shape: (b, num_stations, n_samples, num_predictors)
+    if not test_time: labels = labels.unsqueeze(-1).repeat(1,1,n_samples) # labels shape: (b, num_stations, n_samples, 1)
     
     # Sample z and concatenate to inputs
     if inducing_points:
@@ -234,75 +221,72 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         inputs = torch.cat([f_sample, inputs], dim=3)
 
     else:
-        q_sample = q.sample(b).permute(1,0).unsqueeze(1)
+        q_sample = q.sample(b*n_samples)
+        q_sample = q_sample.permute(1,0).unsqueeze(1).reshape(b,-1,x.shape[0],n_samples).permute(0,2,3,1)
         inputs = torch.cat([q_sample, inputs], dim=3)
 
     # Masking for missing data
     # inputs = inputs.permute(0,1,3,2)
         
     mask = ~torch.any(inputs.isnan(),dim=3)
-    
+
     k = mask.any(dim=0).any(dim=1).sum()
 
     # Forward pass
-    outputs = model(inputs.float())
+    outputs = model(inputs.float()) # outputs: (b, num_stations, n_samples, num_output_dims)
 
-    assert inputs.isnan().sum() == 0
-    assert outputs.isnan().sum() == 0
-    assert labels.isnan().sum() == 0
+    # assert inputs.isnan().sum() == 0
+    # assert outputs.isnan().sum() == 0
+    # if not test_time: assert labels.isnan().sum() == 0
 
-    device = labels.device
-    logp = torch.zeros_like(labels, device=device)
+    if not test_time: 
+        device = labels.device
+        logp = torch.zeros_like(labels, device=device)
     
-    b_mask = labels == 0 # shape (b, n_samples, k)
-    g_mask = labels > 0
-
-    # shape of outputs: (b, num_stations, n_samples, num_output_dims)
-   
-    pi = outputs[...,0] # shape (b, num_stations, n_samples)
-    alpha = outputs[...,1] # shape (b, num_stations, n_samples)
-    beta = outputs[...,2] # shape (b, num_stations, n_samples)
-
-    # Computing log probabilities for gamma distribution where obs > 0
-    gamma_dist = Gamma(concentration=alpha[g_mask], rate=beta[g_mask])
-    logp[g_mask] = torch.log((1 - pi[g_mask])) + gamma_dist.log_prob(labels[g_mask])
+        b_mask = labels == 0 # shape (b, n_samples, k)
+        g_mask = labels > 0
     
-    # Computing log probabilities for Bernoulli distribution where obs == 0
-    logp[b_mask] = torch.log(pi[b_mask])
+        pi = outputs[...,0] # shape (b, num_stations, n_samples)
+        alpha = outputs[...,1] # shape (b, num_stations, n_samples)
+        beta = outputs[...,2] # shape (b, num_stations, n_samples)
 
-    if mask is not None:
-        logp = logp * mask
+        # Computing log probabilities for gamma distribution where obs > 0
+        gamma_dist = Gamma(concentration=alpha[g_mask], rate=beta[g_mask])
+        logp[g_mask] = torch.log((1 - pi[g_mask])) + gamma_dist.log_prob(labels[g_mask])
+        
+        # Computing log probabilities for Bernoulli distribution where obs == 0
+        logp[b_mask] = torch.log(pi[b_mask])
 
-    # sum logp over stations - resulting tensor dims: (b, n_samples)
-    sum_logp_N = logp.sum(1)
+        if mask is not None:
+            logp = logp * mask
 
-    # Use torch.logsumexp for the final computation over Monte Carlo samples
-    sum_logp_NM = torch.logsumexp(sum_logp_N, dim=1) - torch.log(torch.tensor(n_samples, dtype=torch.float, device=device))
-    # sum_logp_N is a tensor of shape (b, n_samples)
-    # torch.logsumexp(sum_logp_N, dim=1) sums over the n_samples dimension
-    # then we subtract the log of the number of samples to get the average log likelihood over the samples
+        # sum logp over stations - resulting tensor dims: (b, n_samples)
+        sum_logp_N = logp.sum(1)
 
-    # Reconstruction term, averaging the term sum_logp_NM over the batch size
-    neg_sum_logp_NM = -sum_logp_NM.mean()
-    # recon = -loss_fn(outputs, labels[mask], inputs, model, reduction=False) # Check if this is biased
+        # Use torch.logsumexp for the final computation over Monte Carlo samples. 
+        sum_logp_NM = torch.logsumexp(sum_logp_N, dim=1) - torch.log(torch.tensor(n_samples, dtype=torch.float, device=device))
 
-    recon = logp.mean()
+        # Reconstruction term, averaging the term sum_logp_NM over the batch size
+        neg_sum_logp_NM = -sum_logp_NM.mean()
 
-    # ELBO
-    elbo = recon - kl/(n)
-    # elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+        # Reconstruction term, averaging the term sum_logp_NM over the batch size
+        recon = logp.mean()
+
+        # ELBO
+        elbo = recon - kl/(n) # ORIGINALLY: elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+        
+        # print(f"ELBO: {elbo.item():.4f}, Recon: {(recon).item():.4f}, KL: {(kl/n).item():.4f}, K: {k.item()}")
+
+        # Backward pass and optimizer step
+        if backward:
+            (-elbo).backward()
+            optimizer.step()
+            optimizer.zero_grad()
+        
+        return elbo, recon, kl, k, neg_sum_logp_NM
     
-    # print(f"ELBO: {elbo.item():.4f}, Recon: {(recon).item():.4f}, KL: {(kl/n).item():.4f}, K: {k.item()}")
-
-    # Backward pass and optimizer step
-    if backward:
-        (-elbo).backward()
-        optimizer.step()
-        optimizer.zero_grad()
-
-    del f_sample
-    
-    return elbo, recon, kl, k, neg_sum_logp_NM
+    else:
+        return inputs, outputs
 
 if __name__ == "__main__":
     # Parameters
