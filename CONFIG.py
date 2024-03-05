@@ -9,7 +9,7 @@ device = 'cpu'
 start="1970-01-01"
 end="2015-12-31"
 
-# Data paths\
+# Data paths
 
 EXPERIMENT = 2 # 1, 2, 3 or 4
 
@@ -39,7 +39,7 @@ DATA_PATHS = {'WAPDA' : '../../data/norris/enriched_obs/enriched_wapda_obs_norri
 
 # Run name
 # RUN_NAME = f'{REGION}_ALLMODELS_19_NOV_2023_EXP_2'
-RUN_NAME = f'{REGION}_RECURRENT_2_DEC_2023_EXP_{EXPERIMENT}'
+RUN_NAME = f'{REGION}_04MARCH2024_{EXPERIMENT}'
 
 ADD_PREVIOUS_DAY = False
 
@@ -83,9 +83,9 @@ params = OrderedDict(
                       # 'gaussian',
                       # 'gamma',
                       # 'lognormal',
-                      # 'gumbel',
-                      # 'halfnormal',
-                      # ' bgmm',
+                      'gumbel',
+                      'halfnormal',
+                      ' bgmm',
                       #'b2gmm',
                       'bernoulli_lognormal',
                       # 'bernoulli_gaussian',
@@ -101,13 +101,13 @@ params = OrderedDict(
                   #  ('SimpleRNN',[10]),
                    ('MLP',[50,50]),
                   #  ('MLP',[100,100,100,100]),
-                   ('GRU',[50,50]),
-                    ('LSTM',[50,50]),
-                   ('SimpleRNN',[50,50])
+                  #  ('GRU',[50,50]),
+                  #  ('LSTM',[50,50]),
+                  #  ('SimpleRNN',[50,50])
                   ]
 )
 
-epochs = 5
+epochs = 10
 
 # Seasons
 seasons = ['JFM', 'AM', 'JJAS','OND']

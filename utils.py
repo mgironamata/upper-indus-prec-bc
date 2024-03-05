@@ -178,7 +178,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         assert predictors.isnan().sum() == 0
         assert labels.isnan().sum() == 0
 
-        loss = loss_fn(predictands, labels, predictors, model)  
+        loss = loss_fn(predictands, labels, predictors, model, device=device)  
 
         if loss.isnan():
 
@@ -219,7 +219,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
             labels = labels.reshape(-1, labels.shape[-1])
             
             predictands = model(predictors)
-            loss = loss_fn(predictands, labels, predictors, model)
+            loss = loss_fn(predictands, labels, predictors, model, device=device)
             valid_losses.append(loss.item())
 
         if test_loader != None:
@@ -237,7 +237,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
                 labels = labels.reshape(-1, labels.shape[-1])
 
                 predictands = model(predictors)
-                loss = loss_fn(predictands, labels, predictors, model)
+                loss = loss_fn(predictands, labels, predictors, model, device=device)
                 test_losses.append(loss.item())
              
     #mean_train_losses.append(np.mean(train_losses))
@@ -260,7 +260,14 @@ def loss_fn_gp(predictands : torch.tensor,
 
     
 
-def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torch.tensor, model : MLP, reduction : str = 'mean', mask : torch.tensor = None):
+def loss_fn(predictands : torch.tensor, 
+            labels : torch.tensor, 
+            predictors : torch.tensor, 
+            model : MLP, 
+            reduction : str = 'mean', 
+            mask : torch.tensor = None,
+            device: torch.device = device):
+    
     """Computes loss function (log-probability of labels).
 
     Args:
@@ -293,52 +300,52 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
         indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
-        loss = -gaussian_logpdf(labels, mu=predictands[:,0][indices], sigma=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
+        loss = -gaussian_logpdf(labels, mu=predictands[:,0][indices], sigma=predictands[:,1][indices], reduction=reduction, device=device) * ratio if len(indices)>0 else torch.tensor(0)
     
     elif model.likelihood == 'gamma':
-        loss = -gamma_logpdf(labels, alpha=predictands[:,0], beta=predictands[:,1], reduction=reduction)
+        loss = -gamma_logpdf(labels, alpha=predictands[:,0], beta=predictands[:,1], reduction=reduction, device=device)
 
     elif model.likelihood == 'gamma_nonzero':
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
         indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
-        loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
+        loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction, device=device) * ratio if len(indices)>0 else torch.tensor(0)
 
     elif model.likelihood == 'lognormal':
-        loss = -lognormal_logpdf(labels, mu=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
+        loss = -lognormal_logpdf(labels, mu=predictands[:,0], sigma=predictands[:,1], reduction=reduction, device=device)
 
     elif model.likelihood == 'halfnormal':
-        loss = -halfnormal_logpdf(labels, sigma=predictands[:,0], reduction=reduction)
+        loss = -halfnormal_logpdf(labels, sigma=predictands[:,0], reduction=reduction, device=device)
 
     elif model.likelihood == 'gumbel':
-        loss = -gumbel_logpdf(labels, mu=predictands[:,0], beta=predictands[:,1], reduction=reduction)
+        loss = -gumbel_logpdf(labels, mu=predictands[:,0], beta=predictands[:,1], reduction=reduction, device=device)
     
     elif model.likelihood == 'ggmm':
         loss = -gamma_gamma_logpdf(labels, alpha1=predictands[:,0], alpha2=predictands[:,1], 
-                             beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction)
+                             beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction, device=device)
 
     elif model.likelihood == 'bgmm':
-        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask, device=device)
     
     elif model.likelihood == 'b2gmm':
         loss = -b2gmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
-                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], reduction=reduction)
+                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], reduction=reduction, device=device)
 
     elif model.likelihood == 'b2sgmm':
         loss = -b2sgmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
-                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], t=predictands[:,6], reduction=reduction)
+                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], t=predictands[:,6], reduction=reduction, device=device)
     
     elif model.likelihood == 'bernoulli_gaussian':
-        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction, device=device)
     
     elif model.likelihood == 'bernoulli_lognormal':
-        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction, device=device)
 
     elif model.likelihood == 'bernoulli_gumbel':
-        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction=reduction, device=device)
 
     elif model.likelihood == 'bernoulli_halfnormal':
-        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
+        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction=reduction, device=device)
 
     return loss
 
@@ -1233,7 +1240,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                                     val_loader,
                                                     epoch=epoch,
                                                     test_loader=test_loader,
-                                                    print_progress=True)
+                                                    print_progress=True,
+                                                    device=use_device,)
 
                 if best_by == 'val': decision_loss = val_loss
                 elif best_by == 'train': decision_loss = train_loss

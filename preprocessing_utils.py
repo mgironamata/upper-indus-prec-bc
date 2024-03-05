@@ -275,8 +275,8 @@ def _drop_dataframe_nan_values(df, series='Prec', verbose=False):
 
 def replace_negative_values(df, series='Prec', verbose=False):
 
-    df[series][df[series] < 0] = 0
-    # df.loc[df[series] < 0, series] = 0
+    # df[series][df[series] < 0] = 0
+    df.loc[df[series] < 0, series] = 0
     
     return df
 
