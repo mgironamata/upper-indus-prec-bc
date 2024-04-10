@@ -14,6 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as Fv
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 
+from preprocessing_utils import DataPreprocessing
+
 from captum.attr import IntegratedGradients, NoiseTunnel, DeepLift, GradientShap, FeatureAblation
 
 import scipy.stats as stats 
@@ -1114,11 +1116,47 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_predictors
 
-def multirun(data, predictors, params, epochs, split_by='station', 
-             sequential_samples=False, sample_threshold=None, n_samples=10, draw_samples=True,
-             best_by='val', use_device=device, load_run=None, feature_attribution=True, 
-             save_to = '/data/hpcdata/users/marron31/', experiment_label = None, show_loss_plot = False):
+def multirun(C, 
+             predictors, 
+             params, 
+             epochs, 
+             split_by='station', 
+             sequential_samples=False, 
+             sample_threshold=None, 
+             n_samples=10, 
+             draw_samples=True,
+             best_by='val', 
+             use_device=device, 
+             load_run=None, 
+             feature_attribution=True, 
+             save_to = '/data/hpcdata/users/marron31/', 
+             experiment_label = None, 
+             show_loss_plot = False,
+             add_yesterday = False, 
+             basin_filter = None, 
+             split_bias_corrected_only = False,
+             filter_incomplete_years = False, 
+             include_non_bc_stations = False):
 
+    data = DataPreprocessing(train_path=C.TRAIN_PATH, start=C.start, end=C.end, 
+                    add_yesterday = add_yesterday, 
+                    basin_filter = basin_filter, 
+                    split_bias_corrected_only = split_bias_corrected_only, 
+                    filter_incomplete_years = filter_incomplete_years, 
+                    include_non_bc_stations = include_non_bc_stations, 
+                    split_by = C.split_by)
+
+    if C.SORT_BY_ELEVATION:
+        data.split_stations(sort_by_elev = True)
+    else:
+        data.split_stations(sort_by_elev = False)
+
+    if C.ADD_PREVIOUS_DAY:
+        C.predictors.append('obs_yesterday')
+
+    data.input_data(C.predictors, C.predictand, sort_by_quantile=C.sort_by_quantile)
+
+ 
     m = RunManager()
     predictions={}
     importance={}
@@ -1137,6 +1175,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
         k = run.k
         batch_size = run.batch_size
         lr = run.lr
+        predictors_name = run.predictors[0]
+        predictors = run.predictors[1]
 
         if hasattr(run, 'random_noise'):
             random_noise = run.random_noise
@@ -1207,7 +1247,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
         
         change_folder = True
         if change_folder:
-
+            
             experiment_name = f'{run}'
             if load_run is None:
                 wd = WorkingDirectory(generate_root(experiment_name, label_name=random_label))
@@ -1304,7 +1344,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                 model_type=model_type
                                 )
         
-        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
+        # key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
+        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_Pred={predictors_name}_K={k}'
         print(key)
         
         if not(key in predictions.keys()):

@@ -173,16 +173,37 @@ def plot_clustermap(st_corr):
     # plt.savefig(f'figures/corr-heatmap-clustered-{corr_series}.png',dpi=300)
     plt.show()
 
-def build_corr_df(st, dist_list=['Y','X'], corr_series='Prec'):
+def build_corr_df(st, dist_list=['Y','X'], corr_series='Prec', basin=False):
+    """ 
+    Build a dataframe with the correlation between two stations as a function of their distance.
+
+    Parameters:
+    st : pd.DataFrame
+        DataFrame containing the stations data
+    dist_list : list
+        List of columns containing the distances between the stations
+    corr_series : str
+        Name of the series to correlate
+
+    Returns:
+    df : pd.DataFrame
+        DataFrame with the correlation between two stations as a function of their distance
+    mask : pd.Series
+        Mask to filter out the autocorrelations and the correlations between different basins
+    """
     
+    # Pivot the DataFrame
     st_pivot = st.pivot(index='Date',
         columns='Station',
         values=corr_series)
 
+    # Compute the correlation matrix
     st_corr = st_pivot.corr(method='spearman')
     
+    # Retrieve the coordinates of the stations
     st_coords = st.groupby(by=['Station']).mean()[dist_list]
 
+    # Compute the distance matrix
     st_dist = pd.DataFrame(cdist(st_coords, st_coords, 'euclid'),index=st_coords.index,columns=st_coords.index)
 
     st_dist = st_dist.reset_index()
@@ -195,21 +216,49 @@ def build_corr_df(st, dist_list=['Y','X'], corr_series='Prec'):
 
     df = st_dist.merge(st_dist_corr, on=['S1','S2'])
 
-    st_basin = st.groupby(['Station','Basin']).mean().reset_index()[['Station','Basin']]
+    if basin: 
 
-    df = df.merge(st_basin, left_on='S1', right_on='Station').rename(columns={'Basin':'B1'}).merge(st_basin, left_on='S2', right_on='Station').rename(columns={'Basin':'B2'})
+        # Retrieve the basins of the stations
+        st_basin = st.groupby(['Station','Basin']).mean().reset_index()[['Station','Basin']]
 
-    mask_basin = df['B1'] == df['B2'] # mask out corr between different basins
-    mask_station = df['S1'] != df['S2'] # mask out autocorrelations (same station)
-    
-    mask = mask_basin & mask_station
-    
+        # Merge the basins with the distance dataframe
+        df = df.merge(st_basin, left_on='S1', right_on='Station').rename(columns={'Basin':'B1'}).merge(st_basin, left_on='S2', right_on='Station').rename(columns={'Basin':'B2'})
+
+        mask_basin = df['B1'] == df['B2'] # mask out corr between different basins
+        mask_station = df['S1'] != df['S2'] # mask out autocorrelations (same station)
+        mask = mask_basin & mask_station
+
+    else:
+        mask = df['S1'] != df['S2'] # mask out autocorrelations (same station)
+
     return df, mask
 
 def plot_corr(st, corr_series, dist_list, show_reg_line=True, save_to_file=False, show=True):
+    
+    """
+    Plot the correlation between two stations as a function of their distance.
+    
+    Parameters:
+    st : pd.DataFrame
+        DataFrame containing the stations data
+    corr_series : str
+        Name of the series to correlate
+    dist_list : list
+        List of columns containing the distances between the stations
+    show_reg_line : bool
+        Show the regression line
+    save_to_file : bool
+        Save the plot to a file
+    show : bool
+        Show the plot
+        
+    Returns:
+    None
+    
+    """
 
     df, mask = build_corr_df(st, dist_list=dist_list, corr_series=corr_series)
-    _, axes = plt.subplots(1,2,figsize=(20,8))
+    _, axes = plt.subplots(1,1,figsize=(8,8))
     x_lim = []
 
     for index, ax in enumerate(axes.flatten()):

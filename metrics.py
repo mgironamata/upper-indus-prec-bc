@@ -6,6 +6,7 @@ import properscoring as ps
 
 from likelihoods import * 
 import torch
+import pdb
 
 __all__ = [ 
             'squared_error',
@@ -144,7 +145,14 @@ def CRPS(df : pd.DataFrame, ensemble = None, num_quantiles : int = 100, limit = 
 
     return ps.crps_ensemble(observations=obs, forecasts=b)
 
-def ROC(df : pd.DataFrame, obs : str, sim : str = None, wet_threshold : float = 0, quantile : float = 0.5, only_wet_days : bool = False):
+def ROC(df : pd.DataFrame, 
+        obs : str, 
+        sim : str = None, 
+        wet_threshold : float = 0, 
+        quantile : float = 0.5, 
+        only_wet_days : bool = False,
+        likelihood : str = None,
+        ):
     "Returns hit rate and false alarm rate for a given quantile"
 
     if only_wet_days:
@@ -153,7 +161,10 @@ def ROC(df : pd.DataFrame, obs : str, sim : str = None, wet_threshold : float = 
     if sim is None:
         q = (quantile - df['pi'])/(1-df['pi']) # probability of being in the wet class
         q = q.where(q>0, 0) # make sure q is positive
-        p = scipy.stats.gamma.ppf(q=q, a=df['alpha'], loc=0, scale=1/df['beta']) # quantile of the gamma distribution
+        if likelihood == 'bgmm':
+            p = scipy.stats.gamma.ppf(q=q, a=df['alpha'], loc=0, scale=1/df['beta']) # quantile of the gamma distribution
+        elif likelihood == 'bernoulli_lognormal':
+            p = scipy.stats.lognorm.ppf(q=q, s=df['sigma'], loc=0, scale=np.exp(df['mu']))
         v = np.where(p>wet_threshold, 1, 0) # wet or dry
     else:
         v = np.array(df[sim]>wet_threshold)*1 # wet or dry for simulations
@@ -193,65 +204,65 @@ def AUC(x, y):
     
     return area
 
-def logprob(df : pd.DataFrame, dist : str =None, det_mu_series : str = None, det_sigma_series : str = None):
+def logprob(df : pd.DataFrame, dist : str =None, det_mu_series : str = None, det_sigma_series : str = None, device = 'cpu'):
     if dist == 'bgmm':
         prec = torch.tensor(df['Prec'].values)
         alpha = torch.tensor(df['alpha'].values)
         beta = torch.tensor(df['beta'].values)
         pi = torch.tensor(df['pi'].values)
-        return bernoulli_gamma_logpdf(obs=prec, alpha=alpha, beta=beta, pi=pi)
+        return bernoulli_gamma_logpdf(obs=prec.float(), alpha=alpha, beta=beta, pi=pi, device=device)
     elif dist == 'gaussian':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         sigma = torch.tensor(df['sigma'].values)
-        return gaussian_logpdf(obs=prec, mu=mu, sigma=sigma)
+        return gaussian_logpdf(obs=prec.float(), mu=mu, sigma=sigma, device=device)
     elif dist == 'gamma':
         prec = torch.tensor(df['Prec'].values)
         alpha = torch.tensor(df['alpha'].values)
         beta = torch.tensor(df['beta'].values)
-        return gamma_logpdf(obs=prec, alpha=alpha, beta=beta)
+        return gamma_logpdf(obs=prec.float(), alpha=alpha, beta=beta, device=device)   
     elif dist == 'lognormal':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         sigma = torch.tensor(df['sigma'].values)
-        return lognormal_logpdf(obs=prec, mu=mu, sigma=sigma)
+        return lognormal_logpdf(obs=prec.float(), mu=mu, sigma=sigma, device=device)
     elif dist == 'gumbel':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         beta = torch.tensor(df['beta'].values)
-        return gumbel_logpdf(obs=prec, mu=mu, beta=beta)
+        return gumbel_logpdf(obs=prec.float(), mu=mu, beta=beta, device=device)
     elif dist == 'halfnormal':
         prec = torch.tensor(df['Prec'].values)
         sigma = torch.tensor(df['sigma'].values)
-        return halfnormal_logpdf(obs=prec, sigma=sigma)
+        return halfnormal_logpdf(obs=prec.float(), sigma=sigma, device=device)
     elif dist == 'bernoulli_gaussian':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         sigma = torch.tensor(df['sigma'].values)
         pi = torch.tensor(df['pi'].values)
-        return bernoulli_gaussian_logpdf(obs=prec, mu=mu, sigma=sigma, pi=pi)
+        return bernoulli_gaussian_logpdf(obs=prec.float(), mu=mu, sigma=sigma, pi=pi, device=device)
     elif dist == 'bernoulli_gumbel':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         beta = torch.tensor(df['beta'].values)
         pi = torch.tensor(df['pi'].values)
-        return bernoulli_gumbel_logpdf(obs=prec, mu=mu, beta=beta, pi=pi)
+        return bernoulli_gumbel_logpdf(obs=prec.float(), mu=mu, beta=beta, pi=pi, device=device)
     elif dist == 'bernoulli_halfnormal':
         prec = torch.tensor(df['Prec'].values)
         sigma = torch.tensor(df['sigma'].values)
         pi = torch.tensor(df['pi'].values)
-        return bernoulli_halfnormal_logpdf(obs=prec, sigma=sigma, pi=pi)
+        return bernoulli_halfnormal_logpdf(obs=prec.float(), sigma=sigma, pi=pi, device=device)
     elif dist == 'bernoulli_lognormal':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)
         sigma = torch.tensor(df['sigma'].values)
         pi = torch.tensor(df['pi'].values)
-        return bernoulli_lognormal_logpdf(obs=prec, mu=mu, sigma=sigma, pi=pi)
+        return bernoulli_lognormal_logpdf(obs=prec.float(), mu=mu, sigma=sigma, pi=pi, device=device)
     elif dist == 'gaussian_from_deterministic':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df[det_mu_series].values)
         sigma = torch.tensor(df[det_sigma_series].values)
-        return gaussian_logpdf(obs=prec, mu=mu, sigma=sigma)
+        return gaussian_logpdf(obs=prec.float(), mu=mu, sigma=sigma, device=device)
     
     else:
         raise ValueError('Distribution not yet implemented')
