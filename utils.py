@@ -262,12 +262,15 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
     assert labels.isnan().sum() == 0
 
     # squeeze dimensions 0 and 1 for predictands, predictors...
-        
+     
     if model.likelihood == None:
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() # mask for non-zero values
         indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
         loss = Fv.mse_loss(predictands[indices], labels[indices]) * ratio if len(indices)>0 else torch.tensor(0)
+
+    elif model.likelihood == 'crossentropy':
+        loss = Fv.cross_entropy(predictands, labels, reduction=reduction)
 
     elif model.likelihood == 'gaussian':
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
