@@ -47,7 +47,7 @@ def _reduce(logp, reduction):
     else:
         raise RuntimeError(f'Unknown reduction "{reduction}".')
 
-def gaussian_logpdf(obs, mu, sigma, reduction='mean', mask=None):
+def gaussian_logpdf(obs, mu, sigma, reduction='mean', mask=None, device=device):
     """Gaussian model log-density.
 
     Args:
@@ -70,7 +70,7 @@ def gaussian_logpdf(obs, mu, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def gamma_logpdf(obs, alpha, beta, reduction='mean', mask=None):
+def gamma_logpdf(obs, alpha, beta, reduction='mean', mask=None, device=device):
     """Gamma mixture model log-density.
 
     Args:
@@ -97,7 +97,7 @@ def gamma_logpdf(obs, alpha, beta, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None):
+def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None, device=device):
     """Benroulli-Gamma-Gamma mexture model log-density.
 
     Args:
@@ -135,7 +135,7 @@ def gamma_gamma_logpdf(obs, alpha1, alpha2, beta1, beta2, q, reduction='mean', m
 
     return _reduce(logp, reduction)
 
-def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean', mask=None):
+def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean', mask=None, device=device):
     """Benroulli-Gamma mixture model log-density.
 
     Args:
@@ -166,7 +166,7 @@ def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
      
-def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None):
+def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean', mask=None, device=device):
     """Benroulli-Gamma-Gamma mexture model log-density.
 
     Args:
@@ -208,7 +208,7 @@ def b2gmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, reduction='mean', mas
 
     return _reduce(logp, reduction)
 
-def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean', mask=None):
+def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean', mask=None, device=device):
     """Benroulli-Gamma-Gamma mixture model log-density.
 
     Args:
@@ -241,7 +241,7 @@ def b2sgmm_logpdf(obs, pi, alpha1, alpha2, beta1, beta2, q, t, reduction='mean',
 
     return _reduce(logp, reduction)
 
-def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
+def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None, device=device):
     """Benroulli-Gaussian mixture model log-density.
 
     Args:
@@ -270,7 +270,7 @@ def bernoulli_gaussian_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
+def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None, device=device):
     """Benroulli-lognormal mixture model log-density.
 
     Args:
@@ -299,7 +299,7 @@ def bernoulli_lognormal_logpdf(obs, pi, mu, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean', mask=None):
+def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean', mask=None, device=device):
     """Benroulli-Gumbel mixture model log-density.
 
     Args:
@@ -328,7 +328,7 @@ def bernoulli_gumbel_logpdf(obs, pi, mu, beta, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean', mask=None):
+def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean', mask=None, device=device):
     """Benroulli-HalfNormal mixture model log-density.
 
     Args:
@@ -356,7 +356,7 @@ def bernoulli_halfnormal_logpdf(obs, pi, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def halfnormal_logpdf(obs, sigma, reduction='mean', mask=None):
+def halfnormal_logpdf(obs, sigma, reduction='mean', mask=None, device=device):
     """HalfNormal mixture model log-density.
 
     Args:
@@ -378,7 +378,7 @@ def halfnormal_logpdf(obs, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def lognormal_logpdf(obs, mu, sigma, reduction='mean', mask=None):
+def lognormal_logpdf(obs, mu, sigma, reduction='mean', mask=None, device=device):
     """LogNormal mixture model log-density.
 
     Args:
@@ -405,7 +405,7 @@ def lognormal_logpdf(obs, mu, sigma, reduction='mean', mask=None):
 
     return _reduce(logp, reduction)
 
-def gumbel_logpdf(obs, mu, beta, reduction='mean', mask=None):
+def gumbel_logpdf(obs, mu, beta, reduction='mean', mask=None, device=device):
     """Gumbel mixture model log-density.
 
     Args:

@@ -14,6 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as Fv
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 
+from preprocessing_utils import DataPreprocessing
+
 from captum.attr import IntegratedGradients, NoiseTunnel, DeepLift, GradientShap, FeatureAblation
 
 import scipy.stats as stats 
@@ -29,6 +31,7 @@ from runmanager import RunBuilder, RunManager
 # from plot_utils import plot_losses
 # from preprocessing_utils import *
 import pdb
+import gc
 
 import CONFIG
 
@@ -47,14 +50,22 @@ __all__ =  [
             'make_predictions',
             'make_sequential_predictions',
             'multirun',
-            'truncate_sample'
+            'truncate_sample',
+            'get_gpu_memory_usage',
+            'print_gpu_usage'
             ]
-            
+
 device = CONFIG.device
 
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 """Device to perform computations on."""
+
+def print_gpu_usage():
+    # Memory allocated for tensors
+    print(f"Memory Allocated: {torch.cuda.memory_allocated() / 1e9} GB")
+    # Memory reserved by the caching allocator
+    print(f"Memory Cached (Reserved): {torch.cuda.memory_reserved() / 1e9} GB")
 
 def _plot_losses(train_losses, val_losses, test_losses, model_type, likelihood_fn, k, random_label):
 
@@ -169,7 +180,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
         assert predictors.isnan().sum() == 0
         assert labels.isnan().sum() == 0
 
-        loss = loss_fn(predictands, labels, predictors, model)  
+        loss = loss_fn(predictands, labels, predictors, model, device=device)  
 
         if loss.isnan():
 
@@ -210,7 +221,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
             labels = labels.reshape(-1, labels.shape[-1])
             
             predictands = model(predictors)
-            loss = loss_fn(predictands, labels, predictors, model)
+            loss = loss_fn(predictands, labels, predictors, model, device=device)
             valid_losses.append(loss.item())
 
         if test_loader != None:
@@ -228,7 +239,7 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
                 labels = labels.reshape(-1, labels.shape[-1])
 
                 predictands = model(predictors)
-                loss = loss_fn(predictands, labels, predictors, model)
+                loss = loss_fn(predictands, labels, predictors, model, device=device)
                 test_losses.append(loss.item())
              
     #mean_train_losses.append(np.mean(train_losses))
@@ -240,7 +251,25 @@ def train_epoch(model, optimizer, train_loader, valid_loader, epoch, test_loader
     
     return np.mean(train_losses), np.mean(valid_losses), np.mean(test_losses)
 
-def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torch.tensor, model : MLP, reduction : str = 'mean', mask : torch.tensor = None):
+def loss_fn_gp(predictands : torch.tensor, 
+               labels : torch.tensor, 
+               model : VGLM, 
+               reduction : str = 'mean', 
+               mask : torch.tensor = None):
+    
+    if model.likelihood == 'bgmm':
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
+
+    
+
+def loss_fn(predictands : torch.tensor, 
+            labels : torch.tensor, 
+            predictors : torch.tensor, 
+            model : MLP, 
+            reduction : str = 'mean', 
+            mask : torch.tensor = None,
+            device: torch.device = device):
+    
     """Computes loss function (log-probability of labels).
 
     Args:
@@ -276,52 +305,52 @@ def loss_fn(predictands : torch.tensor, labels : torch.tensor, predictors : torc
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
         indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
-        loss = -gaussian_logpdf(labels, mu=predictands[:,0][indices], sigma=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
+        loss = -gaussian_logpdf(labels, mu=predictands[:,0][indices], sigma=predictands[:,1][indices], reduction=reduction, device=device) * ratio if len(indices)>0 else torch.tensor(0)
     
     elif model.likelihood == 'gamma':
-        loss = -gamma_logpdf(labels, alpha=predictands[:,0], beta=predictands[:,1], reduction=reduction)
+        loss = -gamma_logpdf(labels, alpha=predictands[:,0], beta=predictands[:,1], reduction=reduction, device=device)
 
     elif model.likelihood == 'gamma_nonzero':
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
         indices = nonzeromask.nonzero()
         ratio = len(indices)/len(predictands)
-        loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction) * ratio if len(indices)>0 else torch.tensor(0)
+        loss = -gamma_logpdf(labels, alpha=predictands[:,0][indices], beta=predictands[:,1][indices], reduction=reduction, device=device) * ratio if len(indices)>0 else torch.tensor(0)
 
     elif model.likelihood == 'lognormal':
-        loss = -lognormal_logpdf(labels, mu=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
+        loss = -lognormal_logpdf(labels, mu=predictands[:,0], sigma=predictands[:,1], reduction=reduction, device=device)
 
     elif model.likelihood == 'halfnormal':
-        loss = -halfnormal_logpdf(labels, sigma=predictands[:,0], reduction=reduction)
+        loss = -halfnormal_logpdf(labels, sigma=predictands[:,0], reduction=reduction, device=device)
 
     elif model.likelihood == 'gumbel':
-        loss = -gumbel_logpdf(labels, mu=predictands[:,0], beta=predictands[:,1], reduction=reduction)
+        loss = -gumbel_logpdf(labels, mu=predictands[:,0], beta=predictands[:,1], reduction=reduction, device=device)
     
     elif model.likelihood == 'ggmm':
         loss = -gamma_gamma_logpdf(labels, alpha1=predictands[:,0], alpha2=predictands[:,1], 
-                             beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction)
+                             beta1=predictands[:,2], beta2=predictands[:,3], q=predictands[:,4], reduction=reduction, device=device)
 
     elif model.likelihood == 'bgmm':
-        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
+        loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask, device=device)
     
     elif model.likelihood == 'b2gmm':
         loss = -b2gmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
-                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], reduction=reduction)
+                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], reduction=reduction, device=device)
 
     elif model.likelihood == 'b2sgmm':
         loss = -b2sgmm_logpdf(labels, pi=predictands[:,0], alpha1=predictands[:,1], alpha2=predictands[:,2], 
-                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], t=predictands[:,6], reduction=reduction)
+                             beta1=predictands[:,3], beta2=predictands[:,4], q=predictands[:,5], t=predictands[:,6], reduction=reduction, device=device)
     
     elif model.likelihood == 'bernoulli_gaussian':
-        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gaussian_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction, device=device)
     
     elif model.likelihood == 'bernoulli_lognormal':
-        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_lognormal_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], sigma=predictands[:,2], reduction=reduction, device=device)
 
     elif model.likelihood == 'bernoulli_gumbel':
-        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction=reduction)
+        loss = -bernoulli_gumbel_logpdf(labels, pi=predictands[:,0], mu=predictands[:,1], beta=predictands[:,2], reduction=reduction, device=device)
 
     elif model.likelihood == 'bernoulli_halfnormal':
-        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction=reduction)
+        loss = -bernoulli_halfnormal_logpdf(labels, pi=predictands[:,0], sigma=predictands[:,1], reduction=reduction, device=device)
 
     return loss
 
@@ -1090,11 +1119,47 @@ def make_sequential_predictions(model, test_dataset, x_mean, x_std, threshold=No
 
     return concat_test_predictors
 
-def multirun(data, predictors, params, epochs, split_by='station', 
-             sequential_samples=False, sample_threshold=None, n_samples=10, draw_samples=True,
-             best_by='val', use_device=device, load_run=None, feature_attribution=True, 
-             save_to = '/data/hpcdata/users/marron31/', experiment_label = None, show_loss_plot = False):
+def multirun(C, 
+             predictors, 
+             params, 
+             epochs, 
+             split_by='station', 
+             sequential_samples=False, 
+             sample_threshold=None, 
+             n_samples=10, 
+             draw_samples=True,
+             best_by='val', 
+             use_device=device, 
+             load_run=None, 
+             feature_attribution=True, 
+             save_to = '/data/hpcdata/users/marron31/', 
+             experiment_label = None, 
+             show_loss_plot = False,
+             add_yesterday = False, 
+             basin_filter = None, 
+             split_bias_corrected_only = False,
+             filter_incomplete_years = False, 
+             include_non_bc_stations = False):
 
+    data = DataPreprocessing(train_path=C.TRAIN_PATH, start=C.start, end=C.end, 
+                    add_yesterday = add_yesterday, 
+                    basin_filter = basin_filter, 
+                    split_bias_corrected_only = split_bias_corrected_only, 
+                    filter_incomplete_years = filter_incomplete_years, 
+                    include_non_bc_stations = include_non_bc_stations, 
+                    split_by = C.split_by)
+
+    if C.SORT_BY_ELEVATION:
+        data.split_stations(sort_by_elev = True)
+    else:
+        data.split_stations(sort_by_elev = False)
+
+    if C.ADD_PREVIOUS_DAY:
+        C.predictors.append('obs_yesterday')
+
+    data.input_data(C.predictors, C.predictand, sort_by_quantile=C.sort_by_quantile)
+
+ 
     m = RunManager()
     predictions={}
     importance={}
@@ -1113,6 +1178,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
         k = run.k
         batch_size = run.batch_size
         lr = run.lr
+        predictors_name = run.predictors[0]
+        predictors = run.predictors[1]
 
         if hasattr(run, 'random_noise'):
             random_noise = run.random_noise
@@ -1183,7 +1250,7 @@ def multirun(data, predictors, params, epochs, split_by='station',
         
         change_folder = True
         if change_folder:
-
+            
             experiment_name = f'{run}'
             if load_run is None:
                 wd = WorkingDirectory(generate_root(experiment_name, label_name=random_label))
@@ -1216,7 +1283,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                                     val_loader,
                                                     epoch=epoch,
                                                     test_loader=test_loader,
-                                                    print_progress=True)
+                                                    print_progress=True,
+                                                    device=use_device,)
 
                 if best_by == 'val': decision_loss = val_loss
                 elif best_by == 'train': decision_loss = train_loss
@@ -1279,7 +1347,8 @@ def multirun(data, predictors, params, epochs, split_by='station',
                                 model_type=model_type
                                 )
         
-        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
+        # key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
+        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_Pred={predictors_name}_K={k}'
         print(key)
         
         if not(key in predictions.keys()):
@@ -1329,3 +1398,32 @@ def multirun(data, predictors, params, epochs, split_by='station',
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return st_test, predictions, importance
+
+# Function to get the current GPU memory usage for tensors
+def get_gpu_memory_usage():
+    allocated_tensors = []
+    for obj in gc.get_objects():
+        try:
+            # Only consider Torch tensors
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                # Check if the tensor is on GPU
+                if obj.is_cuda:
+                    # Get the size of the tensor
+                    tensor_size = obj.size()
+                    # Calculate the memory usage in bytes
+                    memory_usage = obj.element_size() * obj.nelement()
+                    allocated_tensors.append((obj, tensor_size, memory_usage))
+        except Exception as e:
+            pass  # Skip any objects that aren't relevant or cause errors
+
+    # Sort the list of tensors by memory usage (descending)
+    allocated_tensors.sort(key=lambda x: x[2], reverse=True)
+    
+    # Print information about each tensor
+    for idx, (tensor, size, memory) in enumerate(allocated_tensors):
+        if (len(tensor.shape)==2):
+            if (tensor.shape[0]==199) & (tensor.shape[1]==199): 
+                tensor.detach()
+#                 del tensor
+        else: print(f"{idx} - Tensor size: {size}, Memory usage: {memory / (1024 ** 2):.2f} MB")
+#         print(f"{idx} - Tensor size: {size}, Memory usage: {memory / (1024 ** 2):.2f} MB")

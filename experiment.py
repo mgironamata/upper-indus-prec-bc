@@ -2,6 +2,7 @@ import os
 import shutil
 import time
 import string, random
+import pdb
 
 import slugify
 import torch
@@ -21,6 +22,9 @@ def generate_root(name, show_timestamp = False, show_label = True, label_name = 
     """
     
     now = time.strftime('%Y-%m-%d_%H-%M-%S')
+
+    # Hack to remove the last part of the name for experiments where I include the predictors as params
+    name = name.split('precip_norris')[0]
     
     if label_name is None:
         label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
