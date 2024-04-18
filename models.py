@@ -17,6 +17,8 @@ def _define_out_channels(self):
 
     if self.likelihood == None:
         return 1
+    elif self.likelihood == 'crossentropy':
+        return 1
     elif self.likelihood == 'gaussian':
         return 2
     elif self.likelihood == 'gamma':
@@ -51,6 +53,9 @@ def _define_out_channels(self):
 def _compute_likelihood(self, x):
 
     if self.likelihood==None:
+        return x
+    elif self.likelihood=='crossentropy':
+        x = self.sigmoid(x)
         return x
     elif self.likelihood=='gaussian':
         x[:,1] = self.exp(x[:,1])

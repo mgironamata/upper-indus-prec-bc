@@ -257,6 +257,9 @@ def loss_fn_gp(predictands : torch.tensor,
                reduction : str = 'mean', 
                mask : torch.tensor = None):
     
+    if model.likelihood == 'crossentropy':
+        loss = nn.BCELoss(predictands, labels)
+    
     if model.likelihood == 'bgmm':
         loss = -bernoulli_gamma_logpdf(labels, pi=predictands[:,0], alpha=predictands[:,1], beta=predictands[:,2], reduction=reduction, mask=mask)
 
@@ -299,7 +302,7 @@ def loss_fn(predictands : torch.tensor,
         loss = Fv.mse_loss(predictands[indices], labels[indices]) * ratio if len(indices)>0 else torch.tensor(0)
 
     elif model.likelihood == 'crossentropy':
-        loss = Fv.cross_entropy(predictands, labels, reduction=reduction)
+        loss = nn.BCELoss(predictands, labels)
 
     elif model.likelihood == 'gaussian':
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
