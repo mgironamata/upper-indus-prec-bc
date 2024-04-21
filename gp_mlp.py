@@ -182,7 +182,7 @@ class MultipleOptimizer(object):
         for op in self.optimizers:
             op.step()
 
-def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, inducing_points=True, backward=True, f_marginal=True, n_samples=10, test_time=False):
+def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, inducing_points=True, backward=True, f_marginal=True, n_samples=10, test_time=False, num_GP_dims=3, remove_from_inputs=True):
     
     inputs = inputs.float() # inputs [batch_size, num_predictors, num_stations]
     if not test_time: labels = labels.float() # labels [batch_size, num_stations]
@@ -193,7 +193,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     q.build_normal()
 
     # GP inputs 
-    x = inputs[0,:2,:].permute(1,0).float()
+    x = inputs[0,:num_GP_dims,:].permute(1,0).float()
 
     # Compute KL
     if inducing_points:
@@ -204,8 +204,11 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         f_x = f(x)
         kl = q.kl(f_x)
 
+    if remove_from_inputs:  
+        inputs = inputs[:,num_GP_dims:,:]
+
     # Repeat input tensor K (n_samples) times
-    inputs = inputs[:,2:,:].unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) # inputs shape: (b, num_stations, n_samples, num_predictors)
+    inputs = inputs.unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) # inputs shape: (b, num_stations, n_samples, num_predictors)
     if not test_time: labels = labels.unsqueeze(-1).repeat(1,1,n_samples) # labels shape: (b, num_stations, n_samples, 1)
     
     # Sample z and concatenate to inputs
