@@ -149,8 +149,6 @@ def bernoulli_gamma_logpdf(obs, pi, alpha, beta, reduction='mean', mask=None, de
     Returns:
         torch.Tensor: Log-density.
     """
-    
-    #pdb.set_trace()
 
     obs = obs.flatten()
     logp = torch.zeros(obs.shape, device=device)
