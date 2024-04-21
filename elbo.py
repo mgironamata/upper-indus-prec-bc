@@ -16,13 +16,13 @@ __all__ = ['ApproximatePosterior']
 
 
 class ApproximatePosterior(nn.Module):
-    def __init__(self, dim: int):
+    def __init__(self, dim: int, use_device = device):
         nn.Module.__init__(self)
 
         # Get learnable parameters.
         num_params = int(dim + (dim * dim + dim) / 2)
         self.source = nn.Parameter(
-            torch.randn(num_params, device=device), requires_grad=True
+            torch.randn(num_params, device= use_device), requires_grad=True
         )
         self.dim = dim
 
