@@ -884,7 +884,7 @@ def _add_parameter_series(new_df : pd.DataFrame, model, predictands, raw_simulat
 
 def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=None, x_std=None,
                      confidence_intervals=False, draw_samples=True, n_samples=1, sequential_samples=False, 
-                     threshold=None, model_type='MLP', raw_simulation_series='precip_norris'):
+                     threshold=None, model_type='MLP', raw_simulation_series='precip_norris', device=device):
 
     if sequential_samples:
         seq_predictors_dict = {}
@@ -893,7 +893,7 @@ def build_results_df(df, test_dataset, st_names_test, model, idx=0.05, x_mean=No
             seq_predictors_dict[i] = predictands
         
     else:
-        predictands = make_predictions(model, test_dataset, model_type)
+        predictands = make_predictions(model, test_dataset, model_type, device=device)
 
     predictands =predictands.cpu()
     
@@ -1026,7 +1026,7 @@ def add_to_dict(xs,d):
         d[key] = x
     return d
 
-def make_predictions(model, test_dataset, model_type = 'MLP'):
+def make_predictions(model, test_dataset, model_type = 'MLP', device=device):
 
     model.eval()
 
@@ -1144,13 +1144,14 @@ def multirun(C,
              filter_incomplete_years = False, 
              include_non_bc_stations = False):
 
-    data = DataPreprocessing(train_path=C.TRAIN_PATH, start=C.start, end=C.end, 
-                    add_yesterday = add_yesterday, 
-                    basin_filter = basin_filter, 
-                    split_bias_corrected_only = split_bias_corrected_only, 
-                    filter_incomplete_years = filter_incomplete_years, 
-                    include_non_bc_stations = include_non_bc_stations, 
-                    split_by = C.split_by)
+    data = DataPreprocessing(train_path=C.TRAIN_PATH, 
+                             start=C.start, end=C.end, 
+                             add_yesterday = add_yesterday, 
+                             basin_filter = basin_filter, 
+                             split_bias_corrected_only = split_bias_corrected_only, 
+                             filter_incomplete_years = filter_incomplete_years, 
+                             include_non_bc_stations = include_non_bc_stations, 
+                             split_by = C.split_by)
 
     if C.SORT_BY_ELEVATION:
         data.split_stations(sort_by_elev = True)
@@ -1162,7 +1163,6 @@ def multirun(C,
 
     data.input_data(C.predictors, C.predictand, sort_by_quantile=C.sort_by_quantile)
 
- 
     m = RunManager()
     predictions={}
     importance={}
@@ -1204,10 +1204,12 @@ def multirun(C,
         test_tensor_s = torch.tensor(data.data[f'S_test_{k}'][:,:d],device='cpu', dtype=torch.float32) # transform to torch tensor
 
         if model_type in ["VGLM","MLP"]:
+
             sequential_samples = False
             train_dataset = TensorDataset(train_tensor_x,train_tensor_y) # create training dataset
             val_dataset = TensorDataset(val_tensor_x,val_tensor_y) # create test dataset
             test_dataset = TensorDataset(test_tensor_x,test_tensor_y) # create test dataset
+        
         elif model_type in ["SimpleRNN","LSTM","GRU"]:
             sequential_samples = True
             train_dataset = CustomSimpleRNNDataset(train_tensor_x,train_tensor_y,train_tensor_s) # create training dataset
@@ -1220,6 +1222,7 @@ def multirun(C,
                 likelihood_fn=likelihood_fn,
                 dropout_rate=dropout_rate,
                 random_noise=random_noise)
+            
         elif model_type == "VGLM":
             network = VGLM(in_channels=d, 
                           likelihood_fn=likelihood_fn)  
@@ -1237,7 +1240,7 @@ def multirun(C,
 
         network.to(use_device)
 
-        num_workers = 0 if use_device == 'cpu' else 16
+        num_workers = 0 if use_device == 'cpu' else 0
 
         if model_type in ["VGLM","MLP"]:
             train_loader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -1347,7 +1350,8 @@ def multirun(C,
                                 n_samples=n_samples,
                                 sequential_samples = sequential_samples, 
                                 threshold=sample_threshold,
-                                model_type=model_type
+                                model_type=model_type,
+                                device=use_device
                                 )
         
         # key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
