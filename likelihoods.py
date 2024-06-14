@@ -9,7 +9,8 @@ import CONFIG
 
 import pdb
 
-__all__ = [ 'gaussian_logpdf',
+__all__ = [ 'bernoulli_logpdf',
+            'gaussian_logpdf',
             'gamma_logpdf',
             'gamma_gamma_logpdf',
             'gumbel_logpdf',
@@ -46,6 +47,29 @@ def _reduce(logp, reduction):
         return torch.mean(torch.sum(logp, 1))
     else:
         raise RuntimeError(f'Unknown reduction "{reduction}".')
+
+def bernoulli_logpdf(obs, pi, reduction='mean', mask=None, device=device):
+    """Bernoulli model log-density.
+
+    Args:
+        obs (torch.Tensor): Observed values.
+        pi (torch.Tensor): Bernoulli parameter.
+        reduction (str, optional): Reduction. Defaults to no reduction.
+            Possible values are "sum", "mean", and "batched_mean".
+
+    Returns:
+        torch.Tensor: Log-density.
+    """
+
+    obs = obs.flatten()
+    pi = pi.flatten()
+
+    logp = torch.log(pi) * obs + torch.log(1 - pi) * (1 - obs)
+
+    if mask is not None:
+        logp = _mask(logp, mask)
+
+    return _reduce(logp, reduction)
 
 def gaussian_logpdf(obs, mu, sigma, reduction='mean', mask=None, device=device):
     """Gaussian model log-density.

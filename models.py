@@ -17,6 +17,8 @@ def _define_out_channels(self):
 
     if self.likelihood == None:
         return 1
+    elif self.likelihood == 'bernoulli':
+        return 1
     elif self.likelihood == 'crossentropy':
         return 1
     elif self.likelihood == 'gaussian':
@@ -50,9 +52,27 @@ def _define_out_channels(self):
     elif self.likelihood == 'bernoulli_halfnormal':
         return 2    
 
+def _stable_sigmoid(x):
+    """
+    Numerically stable sigmoid function
+    """
+    result = torch.where(x >= 0,
+                         1 / (1 + torch.exp(-x)),
+                         torch.exp(x) / (1 + torch.exp(x)))
+    return result
+
+def _safe_sigmoid(x):
+    x = torch.clamp(x, -15, 15)  # Clipping values to the range [-15, 15]
+    return 1 / (1 + torch.exp(-x))
+
 def _compute_likelihood(self, x):
 
     if self.likelihood==None:
+        return x
+    elif self.likelihood=='bernoulli':
+        # print(f"logits: {x.min().item()}, {x.max().item()}")
+        # x = self.sigmoid(x)
+        x = _safe_sigmoid(x)
         return x
     elif self.likelihood=='crossentropy':
         x = self.sigmoid(x)

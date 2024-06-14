@@ -304,6 +304,9 @@ def loss_fn(predictands : torch.tensor,
     elif model.likelihood == 'crossentropy':
         loss = nn.BCELoss(predictands, labels)
 
+    elif model.likelihood == 'bernoulli':
+        loss = -bernoulli_logpdf(labels, pi=predictands, reduction=reduction, device=device)
+
     elif model.likelihood == 'gaussian':
         nonzeromask = predictors[:,0] > predictors[:,0].mode().values.item() 
         indices = nonzeromask.nonzero()
@@ -552,7 +555,14 @@ def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : 
             return stats.norm.ppf(quantile, loc=mu, scale=sigma)
         else:
             return 0
-    
+
+    elif likelihood_fn == 'bernoulli':
+            
+            pi = df['pi']
+            perc = df[series] 
+                
+            return stats.bernoulli.ppf(perc, pi)
+            
     elif likelihood_fn == 'bernoulli_lognormal':
 
         pi = df['pi']
@@ -876,6 +886,10 @@ def _add_parameter_series(new_df : pd.DataFrame, model, predictands, raw_simulat
 
         new_df['mean'] = new_df['occurrence']*(new_df['low_gamma_occurrence']*new_df['alpha1']/new_df['beta1'] + (1-new_df['low_gamma_occurrence'])*new_df['alpha2']/new_df['beta2'])
     
+    elif model.likelihood == 'bernoulli':
+        new_df['pi'] = predictands.squeeze()
+        new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
+
     elif type(model.likelihood) ==type(None):
         new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
         new_df['sample_0'] = predictands.squeeze() * new_df['occurrence']
@@ -1045,7 +1059,9 @@ def make_predictions(model, test_dataset, model_type = 'MLP', device=device):
     return test_predictions
 
 def _get_theta_params(likelihood):
-    if likelihood == 'bgmm':
+    if likelihood == 'bernoulli':
+        return ['pi']
+    elif likelihood == 'bgmm':
         return ['pi','alpha','beta']
     elif likelihood == 'bernoulli_gaussian':
         return ['pi','mu','sigma']
@@ -1355,7 +1371,7 @@ def multirun(C,
                                 )
         
         # key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_D={dropout_rate}_RN={random_noise}'
-        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_Pred={predictors_name}_K={k}'
+        key = f'{model_type}_{hidden_channels}_{likelihood_fn}_B={batch_size}_Pred={predictors_name}' #_K={k}'
         print(key)
         
         if not(key in predictions.keys()):
@@ -1399,7 +1415,11 @@ def multirun(C,
             if i == 0:
                 predictions[run]['k_all'] = predictions[run][f'k{i}']
             else:
-                predictions[run]['k_all'] = predictions[run]['k_all'].append(predictions[run][f'k{i}'])
+                predictions[run]['k_all'] = pd.concat([predictions[run]['k_all'], 
+                                                       predictions[run][f'k{i}']
+                                                       ], 
+                                                       ignore_index=True
+                                                       )
     
     with open(os.path.join(MASTER_ROOT,'predictions.pkl'), 'wb') as handle:
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)

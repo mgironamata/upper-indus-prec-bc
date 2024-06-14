@@ -1,13 +1,10 @@
 import numpy as np 
 import pandas as pd
-import os, glob
 from sklearn.model_selection import KFold
 import random, pickle
 
 import torch
 from torch.utils.data import TensorDataset, DataLoader 
-
-import pdb
 
 random.seed(42)
 
@@ -58,7 +55,7 @@ class DataPreprocessing():
 
         
         # Create station dataframe
-        self.st = create_station_dataframe(train_path, start, end, add_yesterday=True, basin_filter=None, filter_incomplete_years = filter_incomplete_years)
+        self.st = create_station_dataframe(self.train_path, self.start, self.end, add_yesterday=True, basin_filter=None, filter_incomplete_years = filter_incomplete_years)
         self.station_dict = self.create_station_dict()
         self.st['StationNum'] = pd.factorize(self.st.Station)[0]
 
