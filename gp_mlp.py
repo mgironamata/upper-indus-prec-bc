@@ -35,6 +35,8 @@ import torch.nn as nn
 from stheno.torch import B, GP, EQ, Normal, Measure
 from matrix import Diagonal
 
+import pdb
+
 # Detect device.
 if torch.cuda.is_available():
     device = "cuda"
@@ -195,42 +197,55 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     # GP inputs 
     x = inputs[0,:num_GP_dims,:].permute(1,0).float()
 
-    # Compute KL
-    if inducing_points:
-        f_post = f | (f(x_ind), q.sample())
-        kl = q.kl(f(x_ind))
-
-    else:
-        f_x = f(x)
-        kl = q.kl(f_x)
-
     if remove_from_inputs:  
         inputs = inputs[:,num_GP_dims:,:]
 
     # Repeat input tensor K (n_samples) times
     inputs = inputs.unsqueeze(-1).repeat(1,1,1,n_samples).permute(0,2,3,1) # inputs shape: (b, num_stations, n_samples, num_predictors)
     if not test_time: labels = labels.unsqueeze(-1).repeat(1,1,n_samples) # labels shape: (b, num_stations, n_samples, 1)
-    
-    # Sample z and concatenate to inputs
+
+    sample_q_once = False
+    # Compute KL
     if inducing_points:
+        if sample_q_once:
+            q_sample =  q.sample()
+        else:
+            q_sample = B.transpose(q.sample(b * n_samples))[:, :, None]
+        
+        f_post = f | (f(x_ind),q_sample) # MEMORY LEAK HERE
+        
+        kl = q.kl(f(x_ind))
+        
+        # Sample z and concatenate to inputs
         if f_marginal:
             f_sample = Normal(f_post.mean(x),
                               Diagonal(f_post.kernel.elwise(x)[:, 0])
-                             ).sample(b*n_samples)     
+                             ).sample(b*n_samples) # sample from f_post    
         else:
-            f_sample = f_post(x).sample(b*n_samples)
+            if sample_q_once:
+                f_sample = f_post(x).sample(b*n_samples) # sample from f_post
+            else:
+                f_sample = f_post(x).sample().squeeze().permute(1,0) # sample from f_post
+            
                 
-        f_sample = f_sample.permute(1,0).unsqueeze(1).reshape(b,-1,x.shape[0],n_samples).permute(0,2,3,1)
-        inputs = torch.cat([f_sample, inputs], dim=3)
-
+        f_sample = f_sample.permute(1,0).unsqueeze(1).reshape(b,-1,x.shape[0],n_samples).permute(0,2,3,1) # reshape f_sample to match inputs shape
+        inputs = torch.cat([f_sample, inputs], dim=3)  # concatenate f_sample to inputs
+    
     else:
-        q_sample = q.sample(b*n_samples)
-        q_sample = q_sample.permute(1,0).unsqueeze(1).reshape(b,-1,x.shape[0],n_samples).permute(0,2,3,1)
-        inputs = torch.cat([q_sample, inputs], dim=3)
+        f_x = f(x) # output of the GP model
+        kl = q.kl(f_x) # KL divergence between q and p
+
+        q_sample = q.sample(b*n_samples) # sample from q
+        q_sample = q_sample.permute(1,0).unsqueeze(1).reshape(b,-1,x.shape[0],n_samples).permute(0,2,3,1) # reshape q_sample to match inputs shape
+        inputs = torch.cat([q_sample, inputs], dim=3) # concatenate q_sample to inputs
 
     # Masking for missing data
     # inputs = inputs.permute(0,1,3,2)
-        
+
+    # if nan in inputs, then pdb.set_trace
+    if inputs.isnan().sum() > 0:
+        pdb.set_trace()
+
     mask = ~torch.any(inputs.isnan(),dim=3)
 
     k = mask.any(dim=0).any(dim=1).sum()
@@ -248,17 +263,23 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
     
         b_mask = labels == 0 # shape (b, n_samples, k)
         g_mask = labels > 0
-    
-        pi = outputs[...,0] # shape (b, num_stations, n_samples)
-        alpha = outputs[...,1] # shape (b, num_stations, n_samples)
-        beta = outputs[...,2] # shape (b, num_stations, n_samples)
 
-        # Computing log probabilities for gamma distribution where obs > 0
-        gamma_dist = Gamma(concentration=alpha[g_mask], rate=beta[g_mask])
-        logp[g_mask] = torch.log((1 - pi[g_mask])) + gamma_dist.log_prob(labels[g_mask])
-        
-        # Computing log probabilities for Bernoulli distribution where obs == 0
-        logp[b_mask] = torch.log(pi[b_mask])
+        if model.likelihood == 'bgmm':
+            pi = outputs[...,0] # shape (b, num_stations, n_samples)
+            alpha = outputs[...,1] # shape (b, num_stations, n_samples)
+            beta = outputs[...,2] # shape (b, num_stations, n_samples)
+
+            # Computing log probabilities for gamma distribution where obs > 0
+            gamma_dist = Gamma(concentration=alpha[g_mask], rate=beta[g_mask])
+            logp[g_mask] = torch.log((1 - pi[g_mask])) + gamma_dist.log_prob(labels[g_mask])
+            
+            # Computing log probabilities for Bernoulli distribution where obs == 0
+            logp[b_mask] = torch.log(pi[b_mask])
+
+        elif model.likelihood == 'bernoulli':
+            pi = outputs.squeeze()
+            # print(f"pi: {pi.min().item()}, {pi.max().item()}")
+            logp = torch.log(pi) * labels + torch.log(1 - pi) * (1 - labels)
 
         if mask is not None:
             logp = logp * mask
@@ -283,6 +304,7 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         # Backward pass and optimizer step
         if backward:
             (-elbo).backward()
+            nn.utils.clip_grad_value_(optimizer.param_groups[0]['params'], 1) # Bit of regularisation
             optimizer.step()
             optimizer.zero_grad()
         
