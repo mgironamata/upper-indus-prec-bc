@@ -15,7 +15,7 @@ from models import *
 from utils import *
 from runmanager import *
 from experiment import *
-# from plot_utils import *
+from plot_utils import *
 from preprocessing_utils import *
 from elbo import *
 
@@ -284,6 +284,9 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
         if mask is not None:
             logp = logp * mask
 
+        # dimensions of logp : (b, num_stations, n_samples)
+        recon = logp.sum(1).mean() # sum over stations, then average across samples, then average over batch size
+        
         # sum logp over stations - resulting tensor dims: (b, n_samples)
         sum_logp_N = logp.sum(1)
 
@@ -292,23 +295,26 @@ def forward_backward_pass(inputs, labels, n, model, optimizer, q, f, x_ind, indu
 
         # Reconstruction term, averaging the term sum_logp_NM over the batch size
         neg_sum_logp_NM = -sum_logp_NM.mean()
+        nll = neg_sum_logp_NM
 
-        # Reconstruction term, averaging the term sum_logp_NM over the batch size
-        recon = logp.mean()
-
+        # Use torch.logsumexp for computing the expectation over the Monte Carlo samples without summing over stations
+        sum_logp_M = torch.logsumexp(logp, dim=2) - torch.log(torch.tensor(n_samples, dtype=torch.float, device=device)) # dims: (b, num_stations)
+        sum_logp_M_stations = sum_logp_M.sum(1) # dims: (b)
+        sum_logp_M_stations_batchmean = sum_logp_M_stations.mean() # dims: (1)
+        
         # ELBO
-        elbo = recon - kl/(n) # ORIGINALLY: elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
+        elbo = recon/(k) - kl/(b*k) # ORIGINALLY: elbo = recon/(b*k) - kl/n # OR (n/(b*k)*recon - kl)/n
         
         # print(f"ELBO: {elbo.item():.4f}, Recon: {(recon).item():.4f}, KL: {(kl/n).item():.4f}, K: {k.item()}")
 
         # Backward pass and optimizer step
         if backward:
             (-elbo).backward()
-            nn.utils.clip_grad_value_(optimizer.param_groups[0]['params'], 1) # Bit of regularisation
+            nn.utils.clip_grad_value_(optimizer.param_groups[0]['params'], 10) # Bit of regularisation
             optimizer.step()
             optimizer.zero_grad()
         
-        return elbo, recon, kl, k, neg_sum_logp_NM
+        return elbo, recon, kl, k, nll
     
     else:
         return inputs, outputs
