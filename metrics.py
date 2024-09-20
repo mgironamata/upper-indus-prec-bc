@@ -68,6 +68,11 @@ def CRPS_apply(df, dist='bgmm',mean='naive_bc',stdev=None):
         x1 = scipy.stats.gamma.ppf(q=np.linspace(0,1,100-len(x0))[1:-1], a=df['alpha'], loc=0, scale=1/df['beta'])
         x = np.concatenate([x0,x1])
 
+    elif dist=='bernoulli':
+        x0 = np.zeros(round(df['pi'] * 100))
+        x1 = np.ones(100-len(x0))
+        x = np.concatenate([x0,x1])
+
     elif dist=='gaussian':
         x = scipy.stats.norm.ppf(q=np.linspace(0,1,100)[1:-1], loc=df['mu'], scale=df['sigma'])
     
@@ -211,6 +216,10 @@ def logprob(df : pd.DataFrame, dist : str =None, det_mu_series : str = None, det
         beta = torch.tensor(df['beta'].values)
         pi = torch.tensor(df['pi'].values)
         return bernoulli_gamma_logpdf(obs=prec.float(), alpha=alpha, beta=beta, pi=pi, device=device)
+    elif dist == 'bernoulli':
+        prec = torch.tensor(df['Prec'].values)
+        pi = torch.tensor(df['pi'].values)
+        return bernoulli_logpdf(obs=prec.float(), pi=pi, device=device)
     elif dist == 'gaussian':
         prec = torch.tensor(df['Prec'].values)
         mu = torch.tensor(df['mu'].values)

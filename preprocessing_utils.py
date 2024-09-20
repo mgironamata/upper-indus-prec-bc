@@ -227,7 +227,7 @@ def sort_by_quantile(st, sort_by = 'precip_norris'):
         if i == 0:
             QM_df = QM_data[s]
         else:
-            QM_df = QM_df.append(QM_data[s])
+            QM_df = pd.concat([QM_df,QM_data[s]])
 
     QM_df.reset_index(drop=True)
     
@@ -496,6 +496,7 @@ def create_input_data(st, predictors, predictand, split_dict, split_by='station'
         if sort_by_quantile_flag:
             data[f'set_train_{i}'] = sort_by_quantile(data[f'set_train_{i}'])
             data[f'set_val_{i}'] = sort_by_quantile(data[f'set_val_{i}'])
+            data[f'set_test_{i}'] = sort_by_quantile(data[f'set_test_{i}'])
                        
         data[f'X_train_{i}'] = (data[f'set_train_{i}'][predictors].to_numpy() - x_mean) / x_std
         data[f'X_val_{i}'] = (data[f'set_val_{i}'][predictors].to_numpy() - x_mean) / x_std

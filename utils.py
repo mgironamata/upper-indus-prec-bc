@@ -478,6 +478,9 @@ def cdf_apply(df: pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int 
 def sample_apply(df : pd.DataFrame, likelihood_fn : str = 'bgmm', sample_size : int = 10000, series : str = 'uniform'):
     "Sample modelled distributions for all rows in a pd.Dataframe"
     
+    if type(likelihood_fn) == type(None):
+        return df['y']
+    
     if likelihood_fn == 'gaussian':
 
         mu = df['mu']
@@ -891,8 +894,9 @@ def _add_parameter_series(new_df : pd.DataFrame, model, predictands, raw_simulat
         new_df['occurrence'] = new_df['pi'].apply(lambda x: 1 if x < 0.5 else 0)
 
     elif type(model.likelihood) ==type(None):
-        new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
-        new_df['sample_0'] = predictands.squeeze() * new_df['occurrence']
+        new_df['y'] = predictands.squeeze()
+        # new_df['occurrence'] = new_df[raw_simulation_series].apply(lambda x: 1 if x>0 else 0)
+        # new_df['sample_0'] = predictands.squeeze() * new_df['occurrence']
 
     return new_df
 
@@ -1183,6 +1187,7 @@ def multirun(C,
     predictions={}
     importance={}
 
+    # Creates a random label for the experiment if not specified.
     if experiment_label is None:
         random_label = ''.join([random.choice(string.ascii_letters) for i in range(10)])
     else:
@@ -1375,7 +1380,7 @@ def multirun(C,
         print(key)
         
         if not(key in predictions.keys()):
-            predictions[key] = {} 
+            predictions[key] = {}
             
         predictions[key][f'k{k}'] = st_test
 
@@ -1410,17 +1415,21 @@ def multirun(C,
 
     # Create predictions for k_all
     for run in predictions.keys():
-        for i in range(len(params['k'])):
-            predictions[run][f'k{i}']['k_fold'] = i
-            if i == 0:
-                predictions[run]['k_all'] = predictions[run][f'k{i}']
-            else:
-                predictions[run]['k_all'] = pd.concat([predictions[run]['k_all'], 
-                                                       predictions[run][f'k{i}']
-                                                       ], 
-                                                       ignore_index=True
-                                                       )
-    
+        if C.EXPERIMENT == 4:
+            predictions[run]['k_all'] = predictions[run]['k9']
+            
+        else:
+            for i in range(len(params['k'])):
+                predictions[run][f'k{i}']['k_fold'] = i
+                if i == 0:
+                    predictions[run]['k_all'] = predictions[run][f'k{i}']
+                else:
+                    predictions[run]['k_all'] = pd.concat([predictions[run]['k_all'], 
+                                                        predictions[run][f'k{i}']
+                                                        ], 
+                                                        ignore_index=True
+                                                        )
+        
     with open(os.path.join(MASTER_ROOT,'predictions.pkl'), 'wb') as handle:
         pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
